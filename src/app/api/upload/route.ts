@@ -134,7 +134,7 @@ export async function POST(req: NextRequest) {
         const actualMimeType = mimeType || 'application/octet-stream';
         const fileType = determineFileType(actualMimeType, fileName);
         
-        safeLog('FINALIZE_SUCCESS', { fileId, fileName, actualSize: driveFile.size, reportedSize: fileSize });
+        safeLog('FINALIZE_VERIFY_SIZE', { fileId, fileName, actualSize: driveFile.size, reportedSize: fileSize });
 
         const fileItem: FileItem = {
             id: driveFile.id || fileId,
@@ -155,20 +155,32 @@ export async function POST(req: NextRequest) {
             isRandomEligible: fileType === 'photo' || fileType === 'video',
         };
 
-        await indexFile(fileItem, token);
+        try {
+            await indexFile(fileItem, token);
+        } catch (indexErr) {
+            safeLog('FINALIZE_FAIL_INDEX', { fileId, fileName, error: (indexErr as Error).message });
+            return NextResponse.json({ success: false, error: 'Gagal mencatat data ke database.' }, { status: 500 });
+        }
 
-        await logSystemEvent({
-            type: 'UPLOAD',
-            message: `1 berkas diunggah ke ${destination.folderPath}`,
-            userId: session?.uid,
-            metadata: {
-                count: 1,
-                category,
-                sabbathDate: destination.sabbathDate,
-                folderPath: destination.folderPath,
-                fileName: fileName
-            },
-        });
+        try {
+            await logSystemEvent({
+                type: 'UPLOAD',
+                message: `1 berkas diunggah ke ${destination.folderPath}`,
+                userId: session?.uid,
+                metadata: {
+                    count: 1,
+                    category,
+                    sabbathDate: destination.sabbathDate,
+                    folderPath: destination.folderPath,
+                    fileName: fileName
+                },
+            });
+        } catch (logErr) {
+            safeLog('FINALIZE_FAIL_LOG', { fileId, fileName, error: (logErr as Error).message });
+            // continue, non-fatal
+        }
+
+        safeLog('FINALIZE_SUCCESS', { fileId, fileName, actualSize: driveFile.size });
 
         clearDriveCache();
 

@@ -254,8 +254,7 @@ function UploadContent() {
                   currentXhr.addEventListener('error', () => reject(new Error('NETWORK_ERROR')));
                   currentXhr.addEventListener('abort', () => reject(new Error('ABORTED')));
                   currentXhr.addEventListener('timeout', () => reject(new Error('TIMEOUT')));
-                  // Set timeout to 0 (no timeout) or extremely high for slow connections
-                  currentXhr.timeout = 0;
+                  currentXhr.timeout = 600000; // 10 minutes timeout per chunk
                   
                   currentXhr.send(chunk);
               });
@@ -269,7 +268,7 @@ function UploadContent() {
                       start = parseInt(parts[1], 10) + 1;
                   } else {
                       diagLog('CHUNK_308_NO_RANGE', { start });
-                      start = 0; // Google received nothing
+                      throw new Error('RETRY_HTTP_308_NO_RANGE'); // Force check query in catch block
                   }
                   retries = 0;
               } else if (result.status === 200 || result.status === 201) {
