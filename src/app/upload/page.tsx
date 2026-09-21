@@ -27,7 +27,7 @@ interface QueueItem {
   xhr?: XMLHttpRequest;
   sessionUrl?: string;
   safeFileName?: string;
-  destination?: any;
+  destination?: Record<string, unknown>;
 }
 
 function UploadContent() {
@@ -194,7 +194,7 @@ function UploadContent() {
               await initSession();
               start = 0;
           }
-      } catch (err) {
+      } catch {
           // ignore network error, let chunk loop handle it
       }
 
@@ -205,7 +205,7 @@ function UploadContent() {
           if (currentXhr) currentXhr.abort();
       };
       
-      setQueue(prev => prev.map(q => q.id === id ? { ...q, xhr: { abort: abortHandler } as any } : q));
+      setQueue(prev => prev.map(q => q.id === id ? { ...q, xhr: { abort: abortHandler } as unknown as XMLHttpRequest } : q));
 
       let retries = 0;
       const MAX_RETRIES = 7;
@@ -254,7 +254,7 @@ function UploadContent() {
                   retries = 0;
               } else if (result.status === 200 || result.status === 201) {
                   let data;
-                  try { data = JSON.parse(result.responseText || '{}'); } catch(e){}
+                  try { data = JSON.parse(result.responseText || '{}'); } catch {}
                   driveFileId = data?.id;
                   start = totalSize;
                   retries = 0;
@@ -316,7 +316,7 @@ function UploadContent() {
                       await initSession();
                       start = 0;
                   }
-              } catch (checkErr) {
+              } catch {
                   // ignore, retry loop will handle next failure
               }
           }

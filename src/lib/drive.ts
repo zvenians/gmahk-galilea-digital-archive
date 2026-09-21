@@ -438,7 +438,7 @@ export async function createResumableUploadSession(params: {
     throw new DriveError('AUTH_ERROR', 'Google Drive client tidak terautentikasi.', 401);
   }
 
-  const auth = (drive.context._options.auth as any);
+  const auth = drive.context._options.auth as unknown as { getAccessToken?: () => Promise<string | { token?: string | null }> };
   let token: string | null = null;
   if (auth && auth.getAccessToken) {
     const res = await auth.getAccessToken();
