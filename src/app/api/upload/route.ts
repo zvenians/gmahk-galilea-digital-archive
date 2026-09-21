@@ -2,16 +2,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import { authenticateRequest } from '@/lib/auth-server';
 import { getDefaultUploadSabbath, isValidSabbathDate } from '@/lib/sabbath';
 import {
-  uploadFileToDrive,
   resolveSabbathDestinationFolder,
   getNonCollidingFileName,
   classifyDriveError,
   determineFileType,
   clearDriveCache,
+  createResumableUploadSession,
+  getGoogleDriveClient
 } from '@/lib/drive';
 import { indexFile, logSystemEvent } from '@/lib/firestore';
 import { ArchiveCategory, FileItem } from '@/lib/types';
-import { Readable } from 'stream';
 
 export async function POST(req: NextRequest) {
   try {
@@ -19,126 +19,158 @@ export async function POST(req: NextRequest) {
     const token = authHeader?.startsWith('Bearer ') ? authHeader.split('Bearer ')[1]?.trim() : undefined;
 
     const session = await authenticateRequest(req);
-
-    // Both viewer and admin can upload according to system rules
-    const formData = await req.formData();
-    const files = formData.getAll('files') as File[];
-    const rawCategory = formData.get('category') as string;
-    const category: ArchiveCategory = rawCategory === 'worship' ? 'worship' : 'documentation';
-    let targetSabbathDate = (formData.get('sabbathDate') as string | null)?.trim() || null;
-
-    if (!files || files.length === 0) {
-      return NextResponse.json({ success: false, error: 'Pilih minimal satu berkas untuk diunggah.' }, { status: 400 });
-    }
-
-    // 1. Determine or validate Sabbath destination
-    if (!targetSabbathDate) {
-      const defaultSabbath = getDefaultUploadSabbath();
-      targetSabbathDate = defaultSabbath.date;
-    } else if (!isValidSabbathDate(targetSabbathDate)) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: `Tanggal '${targetSabbathDate}' bukan hari Sabat yang valid. Format yang diharapkan adalah YYYY-MM-DD (hari Sabtu).`,
-        },
-        { status: 400 }
-      );
-    }
-
-    // 2. Resolve destination folder inside managed Google Drive archive boundary
-    let destination;
+    
+    // We expect a JSON payload
+    let body;
     try {
-      destination = await resolveSabbathDestinationFolder(category, targetSabbathDate);
-    } catch (destErr) {
-      const classified = classifyDriveError(destErr);
-      console.error('[Upload] Destination folder resolution error:', classified.message);
-      return NextResponse.json(
-        {
-          success: false,
-          error: `Gagal menyiapkan folder tujuan di Google Drive [${classified.kind}]: ${classified.message}`,
-        },
-        { status: 500 }
-      );
+        body = await req.json();
+    } catch {
+        return NextResponse.json({ success: false, error: 'Format permintaan tidak valid. Harap gunakan JSON.' }, { status: 400 });
     }
 
-    const uploadedResults: FileItem[] = [];
+    const action = body.action;
 
-    // 3. Process each file with duplicate collision avoidance
-    for (const file of files) {
-      const safeFileName = await getNonCollidingFileName(destination.folderId, file.name);
-      const buffer = Buffer.from(await file.arrayBuffer());
-      const stream = Readable.from(buffer);
-      const mimeType = file.type || 'application/octet-stream';
-      const fileType = determineFileType(mimeType, safeFileName);
+    if (action === 'init') {
+        const { fileName, mimeType, fileSize, category: rawCategory, sabbathDate: rawSabbathDate } = body;
+        const category: ArchiveCategory = rawCategory === 'worship' ? 'worship' : 'documentation';
+        let targetSabbathDate = rawSabbathDate?.trim() || null;
 
-      let driveRes;
-      try {
-        driveRes = await uploadFileToDrive({
-          folderId: destination.folderId,
-          name: safeFileName,
-          mimeType,
-          stream,
+        if (!fileName || !fileSize) {
+            return NextResponse.json({ success: false, error: 'Nama dan ukuran berkas diperlukan.' }, { status: 400 });
+        }
+
+        if (!targetSabbathDate) {
+            const defaultSabbath = getDefaultUploadSabbath();
+            targetSabbathDate = defaultSabbath.date;
+        } else if (!isValidSabbathDate(targetSabbathDate)) {
+            return NextResponse.json(
+                { success: false, error: `Tanggal '${targetSabbathDate}' bukan hari Sabat yang valid. Format yang diharapkan adalah YYYY-MM-DD (hari Sabtu).` },
+                { status: 400 }
+            );
+        }
+
+        let destination;
+        try {
+            destination = await resolveSabbathDestinationFolder(category, targetSabbathDate);
+        } catch (destErr) {
+            const classified = classifyDriveError(destErr);
+            console.error('[Upload Init] Destination folder resolution error:', classified.message);
+            return NextResponse.json(
+                { success: false, error: `Gagal menyiapkan folder tujuan [${classified.kind}]: ${classified.message}` },
+                { status: 500 }
+            );
+        }
+
+        let safeFileName;
+        let sessionUrl;
+        try {
+            safeFileName = await getNonCollidingFileName(destination.folderId, fileName);
+            sessionUrl = await createResumableUploadSession({
+                folderId: destination.folderId,
+                name: safeFileName,
+                mimeType: mimeType || 'application/octet-stream',
+                size: fileSize
+            });
+        } catch (uploadErr) {
+            const classified = classifyDriveError(uploadErr);
+            console.error(`[Upload Init] Failed to create session for '${fileName}':`, classified.message);
+            return NextResponse.json(
+                { success: false, error: `Gagal membuat sesi unggahan [${classified.kind}]: ${classified.message}` },
+                { status: 500 }
+            );
+        }
+
+        return NextResponse.json({
+            success: true,
+            sessionUrl,
+            safeFileName,
+            destination: {
+                folderId: destination.folderId,
+                folderPath: destination.folderPath,
+                sabbathTitle: destination.sabbathTitle,
+                sabbathDate: targetSabbathDate,
+                year: destination.year,
+                quarter: destination.quarter,
+                category
+            }
         });
-      } catch (uploadErr) {
-        const classified = classifyDriveError(uploadErr);
-        console.error(`[Upload] Drive upload failed for '${safeFileName}':`, classified.message);
-        return NextResponse.json(
-          {
-            success: false,
-            error: `Gagal mengunggah berkas '${safeFileName}' ke Google Drive [${classified.kind}]: ${classified.message}`,
-          },
-          { status: 500 }
-        );
-      }
-
-      const fileItem: FileItem = {
-        id: driveRes.id,
-        name: safeFileName,
-        mimeType,
-        size: file.size,
-        category,
-        fileType,
-        sabbathDate: targetSabbathDate,
-        sabbathTitle: destination.sabbathTitle,
-        year: destination.year,
-        quarter: destination.quarter,
-        folderId: destination.folderId,
-        webViewLink: driveRes.webViewLink,
-        webContentLink: driveRes.webContentLink,
-        uploadedBy: session?.email || 'jemaat@gmahk-galilea.org',
-        uploadedAt: new Date().toISOString(),
-        isRandomEligible: fileType === 'photo' || fileType === 'video',
-      };
-
-      await indexFile(fileItem, token);
-      uploadedResults.push(fileItem);
     }
 
-    await logSystemEvent({
-      type: 'UPLOAD',
-      message: `${uploadedResults.length} berkas diunggah ke ${destination.folderPath}`,
-      userId: session?.uid,
-      metadata: {
-        count: uploadedResults.length,
-        category,
-        sabbathDate: targetSabbathDate,
-        folderPath: destination.folderPath,
-      },
-    });
+    if (action === 'finalize') {
+        const { fileId, fileName, mimeType, fileSize, category, destination } = body;
+        
+        if (!fileId || !fileName || !destination) {
+            return NextResponse.json({ success: false, error: 'Data finalisasi tidak lengkap.' }, { status: 400 });
+        }
 
-    clearDriveCache();
+        const drive = getGoogleDriveClient();
+        if (!drive) {
+            return NextResponse.json({ success: false, error: 'Google Drive tidak terautentikasi.' }, { status: 500 });
+        }
 
-    return NextResponse.json({
-      success: true,
-      message: `${uploadedResults.length} berkas berhasil diunggah ke Sabat ${destination.sabbathTitle}`,
-      destination: {
-        path: destination.folderPath,
-        sabbathTitle: destination.sabbathTitle,
-        sabbathDate: targetSabbathDate,
-        category,
-      },
-      data: uploadedResults,
-    });
+        let driveFile;
+        try {
+            const res = await drive.files.get({
+                fileId,
+                fields: 'id, name, webViewLink, webContentLink, size'
+            });
+            driveFile = res.data;
+        } catch (err) {
+            const classified = classifyDriveError(err);
+            return NextResponse.json(
+                { success: false, error: `Gagal mengambil metadata file dari Google Drive [${classified.kind}]: ${classified.message}` },
+                { status: 500 }
+            );
+        }
+
+        const actualMimeType = mimeType || 'application/octet-stream';
+        const fileType = determineFileType(actualMimeType, fileName);
+
+        const fileItem: FileItem = {
+            id: driveFile.id || fileId,
+            name: fileName,
+            mimeType: actualMimeType,
+            size: driveFile.size ? parseInt(driveFile.size, 10) : fileSize,
+            category,
+            fileType,
+            sabbathDate: destination.sabbathDate,
+            sabbathTitle: destination.sabbathTitle,
+            year: destination.year,
+            quarter: destination.quarter,
+            folderId: destination.folderId,
+            webViewLink: driveFile.webViewLink || undefined,
+            webContentLink: driveFile.webContentLink || undefined,
+            uploadedBy: session?.email || 'jemaat@gmahk-galilea.org',
+            uploadedAt: new Date().toISOString(),
+            isRandomEligible: fileType === 'photo' || fileType === 'video',
+        };
+
+        await indexFile(fileItem, token);
+
+        await logSystemEvent({
+            type: 'UPLOAD',
+            message: `1 berkas diunggah ke ${destination.folderPath}`,
+            userId: session?.uid,
+            metadata: {
+                count: 1,
+                category,
+                sabbathDate: destination.sabbathDate,
+                folderPath: destination.folderPath,
+                fileName: fileName
+            },
+        });
+
+        clearDriveCache();
+
+        return NextResponse.json({
+            success: true,
+            message: `Berkas berhasil diunggah ke Sabat ${destination.sabbathTitle}`,
+            data: fileItem
+        });
+    }
+
+    return NextResponse.json({ success: false, error: 'Aksi tidak valid.' }, { status: 400 });
+
   } catch (error) {
     console.error('API Upload error:', error);
     const errorMessage = error instanceof Error ? error.message : String(error);

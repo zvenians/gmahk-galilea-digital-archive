@@ -387,7 +387,7 @@ export async function moveToTrash(fileId: string): Promise<boolean> {
 }
 
 /**
- * Uploads a file stream directly to a Google Drive folder
+ * Uploads a file stream directly to a Google Drive folder (Old method, synchronous)
  */
 export async function uploadFileToDrive(params: {
   folderId: string;
@@ -422,6 +422,60 @@ export async function uploadFileToDrive(params: {
   } catch (err) {
     throw classifyDriveError(err);
   }
+}
+
+/**
+ * Creates a resumable upload session and returns the session URL.
+ */
+export async function createResumableUploadSession(params: {
+  folderId: string;
+  name: string;
+  mimeType: string;
+  size: number;
+}): Promise<string> {
+  const drive = getGoogleDriveClient();
+  if (!drive) {
+    throw new DriveError('AUTH_ERROR', 'Google Drive client tidak terautentikasi.', 401);
+  }
+
+  const auth = (drive.context._options.auth as any);
+  let token: string | null = null;
+  if (auth && auth.getAccessToken) {
+    const res = await auth.getAccessToken();
+    token = typeof res === 'string' ? res : (res?.token || null);
+  }
+  
+  if (!token) {
+    throw new DriveError('AUTH_ERROR', 'Tidak bisa mendapatkan access token dari Google API client.', 401);
+  }
+
+  const metadata = {
+    name: params.name,
+    parents: [params.folderId],
+  };
+
+  const response = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      'X-Upload-Content-Type': params.mimeType,
+      'X-Upload-Content-Length': params.size.toString(),
+    },
+    body: JSON.stringify(metadata)
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new DriveError('API_ERROR', `Gagal membuat sesi upload: ${response.statusText}. Detail: ${text}`, response.status);
+  }
+
+  const sessionUrl = response.headers.get('Location');
+  if (!sessionUrl) {
+    throw new DriveError('API_ERROR', 'Tidak mendapatkan URL sesi (Location header) dari Google Drive', 500);
+  }
+
+  return sessionUrl;
 }
 
 /**

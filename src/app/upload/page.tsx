@@ -25,6 +25,9 @@ interface QueueItem {
   progress: number;
   error?: string;
   xhr?: XMLHttpRequest;
+  sessionUrl?: string;
+  safeFileName?: string;
+  destination?: any;
 }
 
 function UploadContent() {
@@ -129,49 +132,156 @@ function UploadContent() {
 
     try {
       const idToken = await getIdToken();
-      const formData = new FormData();
-      formData.append('files', item.file);
-      formData.append('category', category);
-      formData.append('sabbathDate', selectedSabbathDate);
-
-      const xhr = new XMLHttpRequest();
       
-      setQueue(prev => prev.map(q => q.id === id ? { ...q, xhr } : q));
+      let sessionUrl = item.sessionUrl;
+      let safeFileName = item.safeFileName;
+      let destination = item.destination;
 
-      xhr.upload.addEventListener('progress', (event) => {
-        if (event.lengthComputable) {
-          const percentComplete = Math.round((event.loaded / event.total) * 100);
-          setQueue(prev => prev.map(q => q.id === id ? { ...q, progress: percentComplete } : q));
-        }
-      });
-
-      xhr.addEventListener('load', () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
-          let json: Record<string, unknown> = {};
-          try { json = JSON.parse(xhr.responseText); } catch {}
-          if (json && json.success) {
-            setQueue(prev => prev.map(q => q.id === id ? { ...q, status: 'SUCCESS', progress: 100 } : q));
-          } else {
-            setQueue(prev => prev.map(q => q.id === id ? { ...q, status: 'ERROR', error: (json?.error as string) || 'Server menolak berkas' } : q));
+      if (!sessionUrl) {
+          // Step 1: INIT
+          const initRes = await fetch('/api/upload', {
+              method: 'POST',
+              headers: {
+                  'Content-Type': 'application/json',
+                  ...(idToken ? { 'Authorization': `Bearer ${idToken}` } : {})
+              },
+              body: JSON.stringify({
+                  action: 'init',
+                  fileName: item.file.name,
+                  mimeType: item.file.type || 'application/octet-stream',
+                  fileSize: item.file.size,
+                  category,
+                  sabbathDate: selectedSabbathDate
+              })
+          });
+          
+          const initData = await initRes.json();
+          if (!initData.success) {
+              throw new Error(initData.error || 'Gagal inisialisasi upload');
           }
-        } else {
-          setQueue(prev => prev.map(q => q.id === id ? { ...q, status: 'ERROR', error: `Error HTTP ${xhr.status}` } : q));
-        }
-      });
+          
+          sessionUrl = initData.sessionUrl;
+          safeFileName = initData.safeFileName;
+          destination = initData.destination;
 
-      xhr.addEventListener('error', () => {
-        setQueue(prev => prev.map(q => q.id === id ? { ...q, status: 'ERROR', error: 'Koneksi terputus' } : q));
-      });
-
-      xhr.addEventListener('abort', () => {
-        setQueue(prev => prev.map(q => q.id === id ? { ...q, status: 'ERROR', error: 'Dibatalkan pengguna' } : q));
-      });
-
-      xhr.open('POST', '/api/upload');
-      if (idToken) {
-        xhr.setRequestHeader('Authorization', `Bearer ${idToken}`);
+          // Save to queue for retry
+          setQueue(prev => prev.map(q => q.id === id ? { ...q, sessionUrl, safeFileName, destination } : q));
       }
-      xhr.send(formData);
+
+      if (!sessionUrl) {
+          throw new Error('Sesi upload tidak dapat dibuat');
+      }
+
+      // Step 2: UPLOAD CHUNKS
+      const CHUNK_SIZE = 4 * 1024 * 1024; // 4 MB chunk
+      const totalSize = item.file.size;
+      let start = 0;
+      let driveFileId = null;
+
+      // Determine where to resume if needed (query the session url)
+      const checkRes = await fetch(sessionUrl, {
+          method: 'PUT',
+          headers: {
+              'Content-Range': `bytes */${totalSize}`
+          }
+      });
+      
+      if (checkRes.status === 308) {
+          const range = checkRes.headers.get('Range'); // e.g. "bytes=0-4194303"
+          if (range) {
+              const parts = range.split('-');
+              start = parseInt(parts[1], 10) + 1;
+          }
+      } else if (checkRes.status === 200 || checkRes.status === 201) {
+          // Already uploaded
+          const data = await checkRes.json();
+          driveFileId = data.id;
+          start = totalSize;
+      }
+      
+      let currentXhr: XMLHttpRequest | null = null;
+      
+      // Function to allow aborting the current chunk
+      const abortHandler = () => {
+          if (currentXhr) {
+              currentXhr.abort();
+          }
+      };
+      
+      setQueue(prev => prev.map(q => q.id === id ? { ...q, xhr: { abort: abortHandler } as any } : q));
+
+      while (start < totalSize) {
+          const end = Math.min(start + CHUNK_SIZE, totalSize);
+          const chunk = item.file.slice(start, end);
+          
+          await new Promise<void>((resolve, reject) => {
+              currentXhr = new XMLHttpRequest();
+              currentXhr.open('PUT', sessionUrl);
+              currentXhr.setRequestHeader('Content-Range', `bytes ${start}-${end - 1}/${totalSize}`);
+              
+              currentXhr.upload.addEventListener('progress', (event) => {
+                  if (event.lengthComputable) {
+                      const loaded = start + event.loaded;
+                      const percentComplete = Math.round((loaded / totalSize) * 100);
+                      setQueue(prev => prev.map(q => q.id === id ? { ...q, progress: percentComplete } : q));
+                  }
+              });
+              
+              currentXhr.addEventListener('load', () => {
+                  if (currentXhr!.status === 308) {
+                      resolve();
+                  } else if (currentXhr!.status === 200 || currentXhr!.status === 201) {
+                      try {
+                          const data = JSON.parse(currentXhr!.responseText);
+                          driveFileId = data.id;
+                      } catch(e){}
+                      resolve();
+                  } else {
+                      let errStr = `HTTP Error ${currentXhr!.status}`;
+                      try {
+                          errStr += `: ${currentXhr!.responseText}`;
+                      } catch(e){}
+                      reject(new Error(errStr));
+                  }
+              });
+              
+              currentXhr.addEventListener('error', () => reject(new Error('Koneksi terputus')));
+              currentXhr.addEventListener('abort', () => reject(new Error('Dibatalkan pengguna')));
+              
+              currentXhr.send(chunk);
+          });
+          
+          start = end;
+      }
+      
+      if (!driveFileId) {
+          throw new Error('Upload selesai tetapi tidak mendapatkan ID file dari Google Drive');
+      }
+
+      // Step 3: FINALIZE
+      const finalizeRes = await fetch('/api/upload', {
+          method: 'POST',
+          headers: {
+              'Content-Type': 'application/json',
+              ...(idToken ? { 'Authorization': `Bearer ${idToken}` } : {})
+          },
+          body: JSON.stringify({
+              action: 'finalize',
+              fileId: driveFileId,
+              fileName: safeFileName,
+              mimeType: item.file.type || 'application/octet-stream',
+              fileSize: item.file.size,
+              category,
+              destination
+          })
+      });
+      
+      const finalizeData = await finalizeRes.json();
+      if (!finalizeData.success) {
+          throw new Error(finalizeData.error || 'Gagal finalisasi upload');
+      }
+
+      setQueue(prev => prev.map(q => q.id === id ? { ...q, status: 'SUCCESS', progress: 100 } : q));
 
     } catch (err: unknown) {
       setQueue(prev => prev.map(q => q.id === id ? { ...q, status: 'ERROR', error: (err as Error).message || 'Kesalahan internal' } : q));
