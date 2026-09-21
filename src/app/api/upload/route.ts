@@ -30,6 +30,10 @@ export async function POST(req: NextRequest) {
 
     const action = body.action;
 
+    const safeLog = (event: string, details: Record<string, unknown>) => {
+        console.log(`[UploadDiag Server ${new Date().toISOString()}] ${event}:`, JSON.stringify(details));
+    };
+
     if (action === 'init') {
         const { fileName, mimeType, fileSize, category: rawCategory, sabbathDate: rawSabbathDate } = body;
         const category: ArchiveCategory = rawCategory === 'worship' ? 'worship' : 'documentation';
@@ -73,12 +77,14 @@ export async function POST(req: NextRequest) {
             });
         } catch (uploadErr) {
             const classified = classifyDriveError(uploadErr);
-            console.error(`[Upload Init] Failed to create session for '${fileName}':`, classified.message);
+            safeLog('INIT_FAIL', { fileName, fileSize, error: classified.message });
             return NextResponse.json(
                 { success: false, error: `Gagal membuat sesi unggahan [${classified.kind}]: ${classified.message}` },
                 { status: 500 }
             );
         }
+
+        safeLog('INIT_SUCCESS', { fileName, safeFileName, fileSize, category, folderId: destination.folderId });
 
         return NextResponse.json({
             success: true,
@@ -100,6 +106,7 @@ export async function POST(req: NextRequest) {
         const { fileId, fileName, mimeType, fileSize, category, destination } = body;
         
         if (!fileId || !fileName || !destination) {
+            safeLog('FINALIZE_FAIL_BAD_REQUEST', { fileId, fileName });
             return NextResponse.json({ success: false, error: 'Data finalisasi tidak lengkap.' }, { status: 400 });
         }
 
@@ -117,6 +124,7 @@ export async function POST(req: NextRequest) {
             driveFile = res.data;
         } catch (err) {
             const classified = classifyDriveError(err);
+            safeLog('FINALIZE_FAIL_DRIVE_GET', { fileId, fileName, error: classified.message });
             return NextResponse.json(
                 { success: false, error: `Gagal mengambil metadata file dari Google Drive [${classified.kind}]: ${classified.message}` },
                 { status: 500 }
@@ -125,6 +133,8 @@ export async function POST(req: NextRequest) {
 
         const actualMimeType = mimeType || 'application/octet-stream';
         const fileType = determineFileType(actualMimeType, fileName);
+        
+        safeLog('FINALIZE_SUCCESS', { fileId, fileName, actualSize: driveFile.size, reportedSize: fileSize });
 
         const fileItem: FileItem = {
             id: driveFile.id || fileId,

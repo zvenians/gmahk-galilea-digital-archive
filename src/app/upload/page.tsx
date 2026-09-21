@@ -174,28 +174,40 @@ function UploadContent() {
       let start = 0;
       let driveFileId = null;
 
+      const diagLog = (event: string, details: Record<string, unknown> = {}) => {
+          const safeDetails = { ...details };
+          if (safeDetails.sessionUrl) safeDetails.sessionUrl = '***';
+          console.log(`[UploadDiag Client ${new Date().toISOString()}] ${event}:`, JSON.stringify(safeDetails));
+      };
+
       // Check session status to see where to resume (or if it's expired)
       try {
+          diagLog('CHECK_SESSION_START', { totalSize });
           const checkRes = await fetch(sessionUrl, {
               method: 'PUT',
               headers: { 'Content-Range': `bytes */${totalSize}` }
           });
+          diagLog('CHECK_SESSION_RESULT', { status: checkRes.status, range: checkRes.headers.get('Range') });
+          
           if (checkRes.status === 308) {
               const range = checkRes.headers.get('Range');
               if (range) {
                   const parts = range.split('-');
                   start = parseInt(parts[1], 10) + 1;
+              } else {
+                  start = 0;
               }
           } else if (checkRes.status === 200 || checkRes.status === 201) {
               const data = await checkRes.json();
               driveFileId = data.id;
               start = totalSize;
           } else if (checkRes.status === 404) {
+              diagLog('SESSION_404', { detail: 'Session expired before start' });
               await initSession();
               start = 0;
           }
-      } catch {
-          // ignore network error, let chunk loop handle it
+      } catch (err) {
+          diagLog('CHECK_SESSION_ERROR', { error: (err as Error).message });
       }
 
       let currentXhr: XMLHttpRequest | null = null;
@@ -213,6 +225,9 @@ function UploadContent() {
       while (start < totalSize && !isAborted) {
           const end = Math.min(start + CHUNK_SIZE, totalSize);
           const chunk = item.file.slice(start, end);
+          
+          diagLog('CHUNK_START', { start, end, totalSize, chunkSize: end - start, retries });
+          const chunkStartTime = Date.now();
           
           try {
               const result = await new Promise<{status: number, range?: string | null, responseText?: string, id?: string}>((resolve, reject) => {
@@ -239,17 +254,22 @@ function UploadContent() {
                   currentXhr.addEventListener('error', () => reject(new Error('NETWORK_ERROR')));
                   currentXhr.addEventListener('abort', () => reject(new Error('ABORTED')));
                   currentXhr.addEventListener('timeout', () => reject(new Error('TIMEOUT')));
-                  currentXhr.timeout = 120000;
+                  // Set timeout to 0 (no timeout) or extremely high for slow connections
+                  currentXhr.timeout = 0;
                   
                   currentXhr.send(chunk);
               });
+
+              const elapsedMs = Date.now() - chunkStartTime;
+              diagLog('CHUNK_END', { status: result.status, range: result.range, elapsedMs });
 
               if (result.status === 308) {
                   if (result.range) {
                       const parts = result.range.split('-');
                       start = parseInt(parts[1], 10) + 1;
                   } else {
-                      // Google received nothing, start stays same
+                      diagLog('CHUNK_308_NO_RANGE', { start });
+                      start = 0; // Google received nothing
                   }
                   retries = 0;
               } else if (result.status === 200 || result.status === 201) {
@@ -259,17 +279,23 @@ function UploadContent() {
                   start = totalSize;
                   retries = 0;
               } else if (result.status === 404) {
+                  diagLog('SESSION_404', { detail: 'Session expired during chunk' });
                   await initSession();
                   start = 0;
                   retries = 0;
               } else if ([408, 429, 500, 502, 503, 504].includes(result.status)) {
+                  diagLog('CHUNK_HTTP_RETRYABLE', { status: result.status });
                   throw new Error(`RETRY_HTTP_${result.status}`);
               } else {
+                  diagLog('CHUNK_HTTP_FATAL', { status: result.status, responseText: result.responseText });
                   throw new Error(`HTTP_${result.status}: ${result.responseText || ''}`);
               }
 
           } catch (err: unknown) {
               const errMsg = (err as Error).message;
+              const elapsedMs = Date.now() - chunkStartTime;
+              diagLog('CHUNK_EXCEPTION', { error: errMsg, elapsedMs, retries });
+              
               if (errMsg === 'ABORTED' || isAborted) {
                   throw new Error('Dibatalkan pengguna');
               }
@@ -282,15 +308,15 @@ function UploadContent() {
                   throw new Error(`Gagal setelah ${MAX_RETRIES} percobaan: ${errMsg}`);
               }
               
-              // Exponential backoff
               const backoff = Math.min(1000 * Math.pow(2, retries), 30000);
-              console.log(`[Upload ${item.file.name.substring(0, 15)}] Chunk error (${errMsg}). Retry ${retries}/${MAX_RETRIES} dalam ${backoff}ms...`);
+              diagLog('CHUNK_BACKOFF', { backoff, retries });
               await new Promise(r => setTimeout(r, backoff));
               
               if (isAborted) throw new Error('Dibatalkan pengguna');
               
-              // Check session status to resume properly after network interruption
+              // Verify server's actual state before retrying
               try {
+                  diagLog('CHECK_SESSION_START_RETRY', { totalSize });
                   const checkXhr = new XMLHttpRequest();
                   const checkResult = await new Promise<{status: number, range?: string | null, responseText?: string}>((resolve, reject) => {
                       checkXhr.open('PUT', sessionUrl as string);
@@ -305,19 +331,25 @@ function UploadContent() {
                       checkXhr.send();
                   });
                   
-                  if (checkResult.status === 308 && checkResult.range) {
-                      const parts = checkResult.range.split('-');
-                      start = parseInt(parts[1], 10) + 1;
+                  diagLog('CHECK_SESSION_RESULT_RETRY', { status: checkResult.status, range: checkResult.range });
+                  if (checkResult.status === 308) {
+                      if (checkResult.range) {
+                          const parts = checkResult.range.split('-');
+                          start = parseInt(parts[1], 10) + 1;
+                      } else {
+                          start = 0;
+                      }
                   } else if (checkResult.status === 200 || checkResult.status === 201) {
                       const data = JSON.parse(checkResult.responseText || '{}');
                       driveFileId = data.id;
                       start = totalSize;
                   } else if (checkResult.status === 404) {
+                      diagLog('SESSION_404_RETRY', { detail: 'Session expired detected on retry check' });
                       await initSession();
                       start = 0;
                   }
-              } catch {
-                  // ignore, retry loop will handle next failure
+              } catch (checkErr) {
+                  diagLog('CHECK_SESSION_ERROR_RETRY', { error: (checkErr as Error).message });
               }
           }
       }
