@@ -137,8 +137,7 @@ function UploadContent() {
       let safeFileName = item.safeFileName;
       let destination = item.destination;
 
-      if (!sessionUrl) {
-          // Step 1: INIT
+      const initSession = async () => {
           const initRes = await fetch('/api/upload', {
               method: 'POST',
               headers: {
@@ -151,109 +150,182 @@ function UploadContent() {
                   mimeType: item.file.type || 'application/octet-stream',
                   fileSize: item.file.size,
                   category,
-                  sabbathDate: selectedSabbathDate
+                  sabbathDate: destination?.sabbathDate || selectedSabbathDate
               })
           });
-          
           const initData = await initRes.json();
-          if (!initData.success) {
-              throw new Error(initData.error || 'Gagal inisialisasi upload');
-          }
-          
+          if (!initData.success) throw new Error(initData.error || 'Gagal inisialisasi upload');
           sessionUrl = initData.sessionUrl;
           safeFileName = initData.safeFileName;
           destination = initData.destination;
-
-          // Save to queue for retry
           setQueue(prev => prev.map(q => q.id === id ? { ...q, sessionUrl, safeFileName, destination } : q));
+      };
+
+      if (!sessionUrl) {
+          await initSession();
       }
 
       if (!sessionUrl) {
           throw new Error('Sesi upload tidak dapat dibuat');
       }
 
-      // Step 2: UPLOAD CHUNKS
       const CHUNK_SIZE = 4 * 1024 * 1024; // 4 MB chunk
       const totalSize = item.file.size;
       let start = 0;
       let driveFileId = null;
 
-      // Determine where to resume if needed (query the session url)
-      const checkRes = await fetch(sessionUrl, {
-          method: 'PUT',
-          headers: {
-              'Content-Range': `bytes */${totalSize}`
+      // Check session status to see where to resume (or if it's expired)
+      try {
+          const checkRes = await fetch(sessionUrl, {
+              method: 'PUT',
+              headers: { 'Content-Range': `bytes */${totalSize}` }
+          });
+          if (checkRes.status === 308) {
+              const range = checkRes.headers.get('Range');
+              if (range) {
+                  const parts = range.split('-');
+                  start = parseInt(parts[1], 10) + 1;
+              }
+          } else if (checkRes.status === 200 || checkRes.status === 201) {
+              const data = await checkRes.json();
+              driveFileId = data.id;
+              start = totalSize;
+          } else if (checkRes.status === 404) {
+              await initSession();
+              start = 0;
           }
-      });
-      
-      if (checkRes.status === 308) {
-          const range = checkRes.headers.get('Range'); // e.g. "bytes=0-4194303"
-          if (range) {
-              const parts = range.split('-');
-              start = parseInt(parts[1], 10) + 1;
-          }
-      } else if (checkRes.status === 200 || checkRes.status === 201) {
-          // Already uploaded
-          const data = await checkRes.json();
-          driveFileId = data.id;
-          start = totalSize;
+      } catch (err) {
+          // ignore network error, let chunk loop handle it
       }
-      
+
       let currentXhr: XMLHttpRequest | null = null;
-      
-      // Function to allow aborting the current chunk
+      let isAborted = false;
       const abortHandler = () => {
-          if (currentXhr) {
-              currentXhr.abort();
-          }
+          isAborted = true;
+          if (currentXhr) currentXhr.abort();
       };
       
       setQueue(prev => prev.map(q => q.id === id ? { ...q, xhr: { abort: abortHandler } as any } : q));
 
-      while (start < totalSize) {
+      let retries = 0;
+      const MAX_RETRIES = 7;
+
+      while (start < totalSize && !isAborted) {
           const end = Math.min(start + CHUNK_SIZE, totalSize);
           const chunk = item.file.slice(start, end);
           
-          await new Promise<void>((resolve, reject) => {
-              currentXhr = new XMLHttpRequest();
-              currentXhr.open('PUT', sessionUrl);
-              currentXhr.setRequestHeader('Content-Range', `bytes ${start}-${end - 1}/${totalSize}`);
-              
-              currentXhr.upload.addEventListener('progress', (event) => {
-                  if (event.lengthComputable) {
-                      const loaded = start + event.loaded;
-                      const percentComplete = Math.round((loaded / totalSize) * 100);
-                      setQueue(prev => prev.map(q => q.id === id ? { ...q, progress: percentComplete } : q));
-                  }
+          try {
+              const result = await new Promise<{status: number, range?: string | null, responseText?: string, id?: string}>((resolve, reject) => {
+                  currentXhr = new XMLHttpRequest();
+                  currentXhr.open('PUT', sessionUrl as string);
+                  currentXhr.setRequestHeader('Content-Range', `bytes ${start}-${end - 1}/${totalSize}`);
+                  
+                  currentXhr.upload.addEventListener('progress', (event) => {
+                      if (event.lengthComputable) {
+                          const loaded = start + event.loaded;
+                          const percentComplete = Math.round((loaded / totalSize) * 100);
+                          setQueue(prev => prev.map(q => q.id === id ? { ...q, progress: percentComplete } : q));
+                      }
+                  });
+                  
+                  currentXhr.addEventListener('load', () => {
+                      resolve({
+                          status: currentXhr!.status,
+                          range: currentXhr!.getResponseHeader('Range'),
+                          responseText: currentXhr!.responseText
+                      });
+                  });
+                  
+                  currentXhr.addEventListener('error', () => reject(new Error('NETWORK_ERROR')));
+                  currentXhr.addEventListener('abort', () => reject(new Error('ABORTED')));
+                  currentXhr.addEventListener('timeout', () => reject(new Error('TIMEOUT')));
+                  currentXhr.timeout = 120000;
+                  
+                  currentXhr.send(chunk);
               });
-              
-              currentXhr.addEventListener('load', () => {
-                  if (currentXhr!.status === 308) {
-                      resolve();
-                  } else if (currentXhr!.status === 200 || currentXhr!.status === 201) {
-                      try {
-                          const data = JSON.parse(currentXhr!.responseText);
-                          driveFileId = data.id;
-                      } catch(e){}
-                      resolve();
+
+              if (result.status === 308) {
+                  if (result.range) {
+                      const parts = result.range.split('-');
+                      start = parseInt(parts[1], 10) + 1;
                   } else {
-                      let errStr = `HTTP Error ${currentXhr!.status}`;
-                      try {
-                          errStr += `: ${currentXhr!.responseText}`;
-                      } catch(e){}
-                      reject(new Error(errStr));
+                      // Google received nothing, start stays same
                   }
-              });
+                  retries = 0;
+              } else if (result.status === 200 || result.status === 201) {
+                  let data;
+                  try { data = JSON.parse(result.responseText || '{}'); } catch(e){}
+                  driveFileId = data?.id;
+                  start = totalSize;
+                  retries = 0;
+              } else if (result.status === 404) {
+                  await initSession();
+                  start = 0;
+                  retries = 0;
+              } else if ([408, 429, 500, 502, 503, 504].includes(result.status)) {
+                  throw new Error(`RETRY_HTTP_${result.status}`);
+              } else {
+                  throw new Error(`HTTP_${result.status}: ${result.responseText || ''}`);
+              }
+
+          } catch (err: unknown) {
+              const errMsg = (err as Error).message;
+              if (errMsg === 'ABORTED' || isAborted) {
+                  throw new Error('Dibatalkan pengguna');
+              }
+              if (errMsg.startsWith('HTTP_') && !errMsg.startsWith('RETRY_HTTP_')) {
+                  throw new Error(`Gagal upload chunk: ${errMsg}`);
+              }
               
-              currentXhr.addEventListener('error', () => reject(new Error('Koneksi terputus')));
-              currentXhr.addEventListener('abort', () => reject(new Error('Dibatalkan pengguna')));
+              retries++;
+              if (retries > MAX_RETRIES) {
+                  throw new Error(`Gagal setelah ${MAX_RETRIES} percobaan: ${errMsg}`);
+              }
               
-              currentXhr.send(chunk);
-          });
-          
-          start = end;
+              // Exponential backoff
+              const backoff = Math.min(1000 * Math.pow(2, retries), 30000);
+              console.log(`[Upload ${item.file.name.substring(0, 15)}] Chunk error (${errMsg}). Retry ${retries}/${MAX_RETRIES} dalam ${backoff}ms...`);
+              await new Promise(r => setTimeout(r, backoff));
+              
+              if (isAborted) throw new Error('Dibatalkan pengguna');
+              
+              // Check session status to resume properly after network interruption
+              try {
+                  const checkXhr = new XMLHttpRequest();
+                  const checkResult = await new Promise<{status: number, range?: string | null, responseText?: string}>((resolve, reject) => {
+                      checkXhr.open('PUT', sessionUrl as string);
+                      checkXhr.setRequestHeader('Content-Range', `bytes */${totalSize}`);
+                      checkXhr.onload = () => resolve({
+                          status: checkXhr.status,
+                          range: checkXhr.getResponseHeader('Range'),
+                          responseText: checkXhr.responseText
+                      });
+                      checkXhr.onerror = () => reject(new Error('NETWORK_ERROR'));
+                      checkXhr.onabort = () => reject(new Error('ABORTED'));
+                      checkXhr.send();
+                  });
+                  
+                  if (checkResult.status === 308 && checkResult.range) {
+                      const parts = checkResult.range.split('-');
+                      start = parseInt(parts[1], 10) + 1;
+                  } else if (checkResult.status === 200 || checkResult.status === 201) {
+                      const data = JSON.parse(checkResult.responseText || '{}');
+                      driveFileId = data.id;
+                      start = totalSize;
+                  } else if (checkResult.status === 404) {
+                      await initSession();
+                      start = 0;
+                  }
+              } catch (checkErr) {
+                  // ignore, retry loop will handle next failure
+              }
+          }
       }
       
+      if (isAborted) {
+          throw new Error('Dibatalkan pengguna');
+      }
+
       if (!driveFileId) {
           throw new Error('Upload selesai tetapi tidak mendapatkan ID file dari Google Drive');
       }
