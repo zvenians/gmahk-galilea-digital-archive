@@ -40,6 +40,12 @@ function UploadContent() {
   const { getIdToken } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const [CLIENT_BUILD_VERSION] = useState("1b19bee_diagnostic_2");
+
+  useEffect(() => {
+    console.log(`[Diagnostic] CLIENT_BUILD_VERSION: ${CLIENT_BUILD_VERSION}`);
+  }, [CLIENT_BUILD_VERSION]);
+
   const [category, setCategory] = useState<ArchiveCategory>(queryCategory || 'documentation');
   const [sabbathList, setSabbathList] = useState<SabbathInfo[]>([]);
   const [defaultSabbath, setDefaultSabbath] = useState<SabbathInfo | null>(null);
