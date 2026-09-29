@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { authenticateRequest } from '@/lib/auth-server';
+import { requireAdmin } from '@/lib/auth-server';
 import { getDefaultUploadSabbath, isValidSabbathDate } from '@/lib/sabbath';
 import {
   resolveSabbathDestinationFolder,
@@ -8,17 +8,41 @@ import {
   determineFileType,
   clearDriveCache,
   createResumableUploadSession,
-  getGoogleDriveClient
+  getGoogleDriveClient,
 } from '@/lib/drive';
 import { indexFile, logSystemEvent } from '@/lib/firestore';
 import { ArchiveCategory, FileItem } from '@/lib/types';
+import { createUploadSessionToken, verifyUploadSessionToken } from '@/lib/upload-session';
+
+const MAX_DRIVE_FILE_SIZE = 5 * 1024 * 1024 * 1024 * 1024;
+
+function sanitizeFileName(value: unknown): string {
+  if (typeof value !== 'string') return '';
+  return value
+    .replace(/[\u0000-\u001f\u007f]/g, '')
+    .replace(/[\\/]/g, '-')
+    .trim()
+    .slice(0, 240);
+}
 
 export async function POST(req: NextRequest) {
   try {
-    const authHeader = req.headers.get('Authorization');
-    const token = authHeader?.startsWith('Bearer ') ? authHeader.split('Bearer ')[1]?.trim() : undefined;
+    const authorization = await requireAdmin(req);
+    if (!authorization.authorized) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: authorization.status === 'forbidden'
+            ? 'Hanya admin yang dapat mengunggah berkas.'
+            : 'Silakan masuk sebagai admin untuk mengunggah berkas.',
+        },
+        { status: authorization.status === 'forbidden' ? 403 : 401 }
+      );
+    }
 
-    const session = await authenticateRequest(req);
+    const session = authorization.session;
+    const authHeader = req.headers.get('Authorization');
+    const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7).trim() : undefined;
     
     // We expect a JSON payload
     let body;
@@ -35,12 +59,20 @@ export async function POST(req: NextRequest) {
     };
 
     if (action === 'init') {
-        const { fileName, mimeType, fileSize, category: rawCategory, sabbathDate: rawSabbathDate } = body;
+        const { mimeType, category: rawCategory, sabbathDate: rawSabbathDate } = body;
+        const fileName = sanitizeFileName(body.fileName);
+        const fileSize = Number(body.fileSize);
+        const normalizedMimeType = typeof mimeType === 'string' && mimeType.trim()
+          ? mimeType.trim().slice(0, 150)
+          : 'application/octet-stream';
         const category: ArchiveCategory = rawCategory === 'worship' ? 'worship' : 'documentation';
-        let targetSabbathDate = rawSabbathDate?.trim() || null;
+        let targetSabbathDate = typeof rawSabbathDate === 'string' ? rawSabbathDate.trim() : '';
 
-        if (!fileName || !fileSize) {
+        if (!fileName || !Number.isSafeInteger(fileSize) || fileSize <= 0) {
             return NextResponse.json({ success: false, error: 'Nama dan ukuran berkas diperlukan.' }, { status: 400 });
+        }
+        if (fileSize > MAX_DRIVE_FILE_SIZE) {
+            return NextResponse.json({ success: false, error: 'Ukuran berkas melampaui batas Google Drive (5 TB).' }, { status: 413 });
         }
 
         if (!targetSabbathDate) {
@@ -72,7 +104,7 @@ export async function POST(req: NextRequest) {
             sessionUrl = await createResumableUploadSession({
                 folderId: destination.folderId,
                 name: safeFileName,
-                mimeType: mimeType || 'application/octet-stream',
+                mimeType: normalizedMimeType,
                 size: fileSize
             });
         } catch (uploadErr) {
@@ -84,11 +116,26 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        safeLog('INIT_SUCCESS', { fileName, safeFileName, fileSize, category, folderId: destination.folderId });
+        const uploadToken = createUploadSessionToken({
+            uid: session.uid,
+            fileName: safeFileName,
+            mimeType: normalizedMimeType,
+            fileSize,
+            category,
+            sabbathDate: targetSabbathDate,
+            sabbathTitle: destination.sabbathTitle,
+            year: destination.year,
+            quarter: destination.quarter,
+            folderId: destination.folderId,
+            folderPath: destination.folderPath,
+        });
+
+        safeLog('INIT_SUCCESS', { fileName, safeFileName, fileSize, category, folderId: destination.folderId, uid: session.uid });
 
         return NextResponse.json({
             success: true,
             sessionUrl,
+            uploadToken,
             safeFileName,
             destination: {
                 folderId: destination.folderId,
@@ -103,11 +150,20 @@ export async function POST(req: NextRequest) {
     }
 
     if (action === 'finalize') {
-        const { fileId, fileName, mimeType, fileSize, category, destination } = body;
+        const fileId = typeof body.fileId === 'string' ? body.fileId.trim() : '';
+        const uploadToken = typeof body.uploadToken === 'string' ? body.uploadToken : '';
         
-        if (!fileId || !fileName || !destination) {
-            safeLog('FINALIZE_FAIL_BAD_REQUEST', { fileId, fileName });
+        if (!fileId || !uploadToken) {
+            safeLog('FINALIZE_FAIL_BAD_REQUEST', { fileId });
             return NextResponse.json({ success: false, error: 'Data finalisasi tidak lengkap.' }, { status: 400 });
+        }
+
+        let uploadSession;
+        try {
+            uploadSession = verifyUploadSessionToken(uploadToken, session.uid);
+        } catch (err) {
+            safeLog('FINALIZE_FAIL_TOKEN', { fileId, error: (err as Error).message });
+            return NextResponse.json({ success: false, error: (err as Error).message }, { status: 400 });
         }
 
         const drive = getGoogleDriveClient();
@@ -119,74 +175,100 @@ export async function POST(req: NextRequest) {
         try {
             const res = await drive.files.get({
                 fileId,
-                fields: 'id, name, webViewLink, webContentLink, size'
+                fields: 'id, name, mimeType, parents, webViewLink, webContentLink, thumbnailLink, size, createdTime, trashed'
             });
             driveFile = res.data;
         } catch (err) {
             const classified = classifyDriveError(err);
-            safeLog('FINALIZE_FAIL_DRIVE_GET', { fileId, fileName, error: classified.message });
+            safeLog('FINALIZE_FAIL_DRIVE_GET', { fileId, fileName: uploadSession.fileName, error: classified.message });
             return NextResponse.json(
                 { success: false, error: `Gagal mengambil metadata file dari Google Drive [${classified.kind}]: ${classified.message}` },
                 { status: 500 }
             );
         }
 
-        const actualMimeType = mimeType || 'application/octet-stream';
-        const fileType = determineFileType(actualMimeType, fileName);
+        const actualSize = Number(driveFile.size || 0);
+        const isExpectedFile =
+          !driveFile.trashed &&
+          driveFile.name === uploadSession.fileName &&
+          driveFile.parents?.includes(uploadSession.folderId) &&
+          actualSize === uploadSession.fileSize;
+
+        if (!isExpectedFile) {
+          safeLog('FINALIZE_FAIL_MISMATCH', {
+            fileId,
+            expectedName: uploadSession.fileName,
+            actualName: driveFile.name,
+            expectedFolderId: uploadSession.folderId,
+            actualParents: driveFile.parents,
+            expectedSize: uploadSession.fileSize,
+            actualSize,
+          });
+          return NextResponse.json(
+            { success: false, error: 'Berkas Google Drive tidak sesuai dengan sesi unggahan.' },
+            { status: 409 }
+          );
+        }
+
+        const actualMimeType = driveFile.mimeType || uploadSession.mimeType;
+        const fileType = determineFileType(actualMimeType, uploadSession.fileName);
         
-        safeLog('FINALIZE_VERIFY_SIZE', { fileId, fileName, actualSize: driveFile.size, reportedSize: fileSize });
+        safeLog('FINALIZE_VERIFY_SIZE', { fileId, fileName: uploadSession.fileName, actualSize, reportedSize: uploadSession.fileSize });
 
         const fileItem: FileItem = {
             id: driveFile.id || fileId,
-            name: fileName,
+            name: uploadSession.fileName,
             mimeType: actualMimeType,
-            size: driveFile.size ? parseInt(driveFile.size, 10) : fileSize,
-            category,
+            size: actualSize,
+            category: uploadSession.category,
             fileType,
-            sabbathDate: destination.sabbathDate,
-            sabbathTitle: destination.sabbathTitle,
-            year: destination.year,
-            quarter: destination.quarter,
-            folderId: destination.folderId,
+            sabbathDate: uploadSession.sabbathDate,
+            sabbathTitle: uploadSession.sabbathTitle,
+            year: uploadSession.year,
+            quarter: uploadSession.quarter,
+            folderId: uploadSession.folderId,
+            thumbnailUrl: driveFile.thumbnailLink
+              ? driveFile.thumbnailLink.replace(/=s\d+/, '=s1200')
+              : undefined,
             webViewLink: driveFile.webViewLink || undefined,
             webContentLink: driveFile.webContentLink || undefined,
-            uploadedBy: session?.email || 'jemaat@gmahk-galilea.org',
-            uploadedAt: new Date().toISOString(),
+            uploadedBy: session.email,
+            uploadedAt: driveFile.createdTime || new Date().toISOString(),
             isRandomEligible: fileType === 'photo' || fileType === 'video',
         };
 
         try {
             await indexFile(fileItem, token);
         } catch (indexErr) {
-            safeLog('FINALIZE_FAIL_INDEX', { fileId, fileName, error: (indexErr as Error).message });
+            safeLog('FINALIZE_FAIL_INDEX', { fileId, fileName: uploadSession.fileName, error: (indexErr as Error).message });
             return NextResponse.json({ success: false, error: 'Gagal mencatat data ke database.' }, { status: 500 });
         }
 
         try {
             await logSystemEvent({
                 type: 'UPLOAD',
-                message: `1 berkas diunggah ke ${destination.folderPath}`,
+                message: `1 berkas diunggah ke ${uploadSession.folderPath}`,
                 userId: session?.uid,
                 metadata: {
                     count: 1,
-                    category,
-                    sabbathDate: destination.sabbathDate,
-                    folderPath: destination.folderPath,
-                    fileName: fileName
+                    category: uploadSession.category,
+                    sabbathDate: uploadSession.sabbathDate,
+                    folderPath: uploadSession.folderPath,
+                    fileName: uploadSession.fileName
                 },
             });
         } catch (logErr) {
-            safeLog('FINALIZE_FAIL_LOG', { fileId, fileName, error: (logErr as Error).message });
+            safeLog('FINALIZE_FAIL_LOG', { fileId, fileName: uploadSession.fileName, error: (logErr as Error).message });
             // continue, non-fatal
         }
 
-        safeLog('FINALIZE_SUCCESS', { fileId, fileName, actualSize: driveFile.size });
+        safeLog('FINALIZE_SUCCESS', { fileId, fileName: uploadSession.fileName, actualSize });
 
         clearDriveCache();
 
         return NextResponse.json({
             success: true,
-            message: `Berkas berhasil diunggah ke Sabat ${destination.sabbathTitle}`,
+            message: `Berkas berhasil diunggah ke Sabat ${uploadSession.sabbathTitle}`,
             data: fileItem
         });
     }
