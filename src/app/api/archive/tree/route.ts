@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { discoverArchiveTree } from '@/lib/drive';
+import { classifyDriveError, discoverArchiveTree } from '@/lib/drive';
 import { ArchiveCategory } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
@@ -28,6 +28,9 @@ export async function GET(req: NextRequest) {
     });
   } catch (error) {
     console.error('API Archive tree error:', error);
+    if (classifyDriveError(error).kind === 'AUTH_ERROR') {
+      return NextResponse.json({ success: false, code: 'DRIVE_AUTH_ERROR', error: 'Koneksi Google Drive sedang tidak tersedia.' }, { status: 503 });
+    }
     return NextResponse.json({ success: false, error: 'Failed to fetch archive tree' }, { status: 500 });
   }
 }

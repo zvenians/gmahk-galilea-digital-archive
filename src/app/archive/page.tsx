@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useRef, Suspense } from 'react';
+import React, { useEffect, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import {
   Image as ImageIcon,
@@ -36,25 +36,25 @@ function ArchiveContent() {
   const [selectedSabbath, setSelectedSabbath] = useState<string>(initialSabbath);
   const [files, setFiles] = useState<FileItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
 
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
-  const lastFetchedKeyRef = useRef<string>('');
 
   useEffect(() => {
     let isMounted = true;
-    const fetchKey = `${year}-${quarter}-${category}-${selectedSabbath}`;
-    if (lastFetchedKeyRef.current === fetchKey) {
-      return;
-    }
-
     const sabbathParam = selectedSabbath ? `&sabbath=${encodeURIComponent(selectedSabbath)}` : '';
     const url = `/api/archive/tree?year=${year}&quarter=${quarter}&category=${category}${sabbathParam}`;
 
     fetch(url)
-      .then((res) => res.json())
+      .then(async (res) => {
+        const json = await res.json();
+        if (!res.ok || !json.success) throw new Error(json.error || 'Arsip belum dapat dimuat');
+        return json;
+      })
       .then((json) => {
         if (isMounted && json.success && json.data) {
-          lastFetchedKeyRef.current = `${year}-${quarter}-${category}-${json.data.selectedSabbath || selectedSabbath}`;
+          setLoadError(false);
           if (json.data.availableYears?.length) {
             setAvailableYears(json.data.availableYears);
           }
@@ -68,12 +68,17 @@ function ArchiveContent() {
           setFiles(json.data.files || []);
         }
       })
-      .catch((err) => console.error('Archive tree fetch error:', err))
+      .catch((err) => {
+        if (!isMounted) return;
+        console.error('Archive tree fetch error:', err);
+        setFiles([]);
+        setLoadError(true);
+      })
       .finally(() => {
         if (isMounted) setLoading(false);
       });
     return () => { isMounted = false; };
-  }, [year, quarter, category, selectedSabbath]);
+  }, [year, quarter, category, selectedSabbath, retryCount]);
 
   const filteredFiles = files.filter((file) => {
     let matchType = true;
@@ -266,7 +271,7 @@ function ArchiveContent() {
           </div>
 
           <span className="editorial-meta">
-            {loading ? 'MEMUAT...' : `${filteredFiles.length} BERKAS`}
+            {loading ? 'MEMUAT...' : loadError ? 'ARSIP TIDAK TERSEDIA' : `${filteredFiles.length} BERKAS`}
           </span>
         </div>
 
@@ -280,6 +285,12 @@ function ArchiveContent() {
                   <div className="h-4 w-1/2 rounded bg-white/5 animate-shimmer" />
                 </div>
               ))}
+            </div>
+          ) : loadError ? (
+            <div role="alert" className="flex flex-col items-center rounded-3xl border border-amber-200/20 bg-amber-100/[0.04] px-6 py-20 text-center">
+              <h2 className="mb-4 text-3xl font-light">Arsip belum dapat dimuat.</h2>
+              <p className="max-w-md text-sm leading-relaxed text-white/55">Koneksi ke Google Drive sedang bermasalah. Berkas yang tersimpan tidak terhapus.</p>
+              <button type="button" onClick={() => { setLoading(true); setRetryCount((count) => count + 1); }} className="editorial-button-secondary mt-7">Coba lagi</button>
             </div>
           ) : filteredFiles.length === 0 ? (
             <div className="py-40 flex flex-col items-center justify-center text-center">
@@ -358,7 +369,6 @@ function ArchiveContent() {
                   if (json.data.quarters?.length) {
                     setQuarters(json.data.quarters);
                   }
-                  lastFetchedKeyRef.current = `${year}-${quarter}-${category}-${json.data.selectedSabbath || selectedSabbath}`;
                 }
               })
               .catch(console.error);
@@ -376,5 +386,3 @@ export default function ArchivePage() {
     </Suspense>
   );
 }
-
-

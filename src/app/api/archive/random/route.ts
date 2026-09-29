@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getRandomArchiveSample } from '@/lib/firestore';
-import { getRandomFilesFromDrive } from '@/lib/drive';
+import { classifyDriveError, getRandomFilesFromDrive } from '@/lib/drive';
 import { getLatestDatedArchiveFile } from '@/lib/archive-utils';
 
 export const dynamic = 'force-dynamic';
@@ -38,6 +38,9 @@ export async function GET(req: NextRequest) {
     });
   } catch (error) {
     console.error('API Random archive error:', error);
+    if (classifyDriveError(error).kind === 'AUTH_ERROR') {
+      return NextResponse.json({ success: false, code: 'DRIVE_AUTH_ERROR', error: 'Koneksi Google Drive sedang tidak tersedia.' }, { status: 503 });
+    }
     return NextResponse.json({ success: false, error: 'Failed to fetch random archive' }, { status: 500 });
   }
 }
