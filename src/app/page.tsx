@@ -1,292 +1,140 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import {
-  ArrowRight,
-  Image as ImageIcon,
-  Video as VideoIcon,
-} from 'lucide-react';
-import { FileItem, SabbathInfo } from '@/lib/types';
+import { ArrowRight, Image as ImageIcon, Play, Video as VideoIcon } from 'lucide-react';
+import { FileItem } from '@/lib/types';
 import { getNearestSabbath } from '@/lib/sabbath';
 import MediaViewer from '@/components/MediaViewer';
 
-export default function Home() {
-  const [sabbathInfo, setSabbathInfo] = useState<SabbathInfo | null>(null);
-  const [randomFiles, setRandomFiles] = useState<FileItem[]>([]);
-  const [loadingInitial, setLoadingInitial] = useState(true);
-  const [selectedFileIndex, setSelectedFileIndex] = useState<number | null>(null);
+interface FeaturedSabbath {
+  date: string;
+  formattedTitle: string;
+  year: number;
+  quarter: number;
+}
 
-  useEffect(() => {
-    let isMounted = true;
-
-    Promise.all([
-      fetch('/api/sabbath').then((res) => res.json()).catch(() => ({ success: false })),
-      fetch('/api/archive/random?count=6').then((res) => res.json()).catch(() => ({ success: false }))
-    ]).then(([sabbathData, randomData]) => {
-      if (isMounted) {
-        if (sabbathData.success && sabbathData.data?.nextSabbath) {
-          setSabbathInfo(sabbathData.data.nextSabbath);
-        } else {
-          setSabbathInfo(getNearestSabbath());
-        }
-        if (randomData.success) {
-          setRandomFiles(randomData.data || []);
-        }
-        setLoadingInitial(false);
-      }
-    }).catch((err) => {
-      console.error(err);
-      if (isMounted) {
-        setSabbathInfo(getNearestSabbath());
-        setLoadingInitial(false);
-      }
-    });
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
+function MediaCard({ file, featured, onOpen }: { file: FileItem; featured?: boolean; onOpen: () => void }) {
+  const [imageFailed, setImageFailed] = useState(false);
+  const imageUrl = file.thumbnailUrl && !imageFailed ? file.thumbnailUrl : null;
 
   return (
-    <div className="min-h-screen bg-black text-white selection:bg-white selection:text-black">
-      
-      {/* 1 & 2. HERO SECTION: GALILEA + YESUS */}
-      <section className="relative min-h-[90vh] w-full flex items-center justify-center overflow-hidden pt-20 px-6 sm:px-12">
-        {/* Background Atmosphere */}
-        <div className="absolute inset-0 bg-gradient-to-b from-black via-[#0a0a0a] to-black z-0" />
-        <div className="absolute inset-0 opacity-[0.03] mix-blend-overlay z-0 pointer-events-none" />
-
-        {/* Central Subject - JESUS */}
-        <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
-          <div className="relative w-full max-w-[1200px] h-[80vh] sm:h-[90vh] md:h-[100vh] opacity-90 animate-fade-in mix-blend-screen overflow-hidden">
-            <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-black z-10" />
-            <div className="absolute inset-0 bg-gradient-to-r from-black via-transparent to-black z-10" />
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img 
-              src="/jesus-hero.jpg" 
-              alt="Artistic Representation of Jesus Christ" 
-              className="w-full h-full object-cover object-center filter grayscale contrast-125 brightness-90 animate-subtle-zoom"
-            />
-          </div>
+    <button
+      type="button"
+      onClick={onOpen}
+      className={`group relative overflow-hidden rounded-[1.5rem] border border-white/10 bg-white/[0.035] text-left ${featured ? 'md:col-span-2 md:row-span-2 min-h-[30rem]' : 'min-h-[15rem]'}`}
+    >
+      {imageUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={imageUrl} alt={file.name} onError={() => setImageFailed(true)} className="absolute inset-0 h-full w-full object-cover grayscale transition duration-700 group-hover:scale-[1.035] group-hover:grayscale-0" loading={featured ? 'eager' : 'lazy'} />
+      ) : (
+        <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-white/[0.08] to-transparent text-white/25">
+          {file.fileType === 'video' ? <VideoIcon className="h-10 w-10" /> : <ImageIcon className="h-10 w-10" />}
         </div>
-
-        {/* Typography & Floating Info */}
-        <div className="relative z-20 w-full max-w-[1400px] h-full flex flex-col justify-between py-12 md:py-20 gap-20">
-          
-          {/* Top Info */}
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-center w-full gap-8 animate-fade-in-up" style={{ animationDelay: '200ms' }}>
-            <div className="space-y-1">
-              <p className="text-[10px] md:text-xs font-mono tracking-[0.3em] text-white/50 uppercase">
-                Digital Archive
-              </p>
-              <h2 className="text-sm md:text-base font-light tracking-widest text-white/80 uppercase">
-                GMAHK Galilea
-              </h2>
-            </div>
-
-            <div className="hidden md:flex flex-col items-end space-y-1 text-right">
-              <p className="text-[10px] md:text-xs font-mono tracking-[0.2em] text-white/50 uppercase">
-                Est. 2026
-              </p>
-              <Link href="/archive?category=documentation" className="text-xs md:text-sm font-light tracking-wider text-white hover:text-white/70 transition-colors flex items-center gap-2 group">
-                Jelajahi Arsip
-                <ArrowRight className="w-3 h-3 group-hover:translate-x-1 transition-transform" />
-              </Link>
-            </div>
-          </div>
-
-          {/* Huge Main Typography */}
-          <div className="flex flex-col lg:flex-row items-start lg:items-end justify-between w-full mt-auto mb-10 gap-12 animate-fade-in-up" style={{ animationDelay: '400ms' }}>
-            
-            {/* Title Left */}
-            <div className="flex flex-col mix-blend-difference pointer-events-none">
-              <h1 className="text-[12vw] sm:text-[10vw] lg:text-[8vw] leading-[0.8] font-bold tracking-tighter uppercase text-white">
-                SETIAP SABAT
-              </h1>
-              <h1 className="text-[12vw] sm:text-[10vw] lg:text-[8vw] leading-[0.8] font-bold tracking-tighter uppercase text-white/80 italic ml-0 lg:ml-20">
-                MENYIMPAN
-              </h1>
-              <h1 className="text-[12vw] sm:text-[10vw] lg:text-[8vw] leading-[0.8] font-bold tracking-tighter uppercase text-white/60 ml-0 lg:ml-40">
-                CERITA.
-              </h1>
-            </div>
-
-            {/* Floating Sabbath Info Box (Bottom Right) */}
-            <div className="w-full lg:w-auto bg-black/40 backdrop-blur-xl border border-white/10 p-6 sm:p-8 rounded-2xl flex flex-col gap-4 pointer-events-auto">
-              <div>
-                <p className="text-[10px] font-mono tracking-[0.2em] text-white/40 uppercase mb-1">
-                  SABAT TERDEKAT
-                </p>
-                {loadingInitial && !sabbathInfo ? (
-                  <div className="h-8 w-40 bg-white/10 animate-shimmer rounded" />
-                ) : (
-                  <h3 className="text-xl sm:text-2xl font-light tracking-wide text-white">
-                    {(sabbathInfo || getNearestSabbath()).formattedTitle}
-                  </h3>
-                )}
-              </div>
-              
-              <div className="w-full h-[1px] bg-white/10 my-2" />
-
-              <Link
-                href={`/archive?sabbath=${(sabbathInfo || getNearestSabbath()).date}`}
-                className="group flex items-center justify-between gap-4 text-xs font-mono tracking-widest text-white uppercase hover:text-white/70 transition-colors"
-              >
-                Lihat Dokumentasi
-                <div className="w-8 h-8 rounded-full border border-white/20 flex items-center justify-center group-hover:bg-white group-hover:text-black transition-all">
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </div>
-              </Link>
-            </div>
-            
-          </div>
-        </div>
-      </section>
-
-      {/* 3. MOMENTS (REAL DOCUMENTATION) */}
-      <section className="relative w-full py-32 px-6 sm:px-12 max-w-[1400px] mx-auto z-20">
-        <div className="mb-16 md:mb-24 flex flex-col md:flex-row md:items-end justify-between gap-8">
-          <div>
-            <h2 className="text-[10px] font-mono tracking-[0.3em] text-white/40 uppercase mb-4">
-              Momen Pelayanan
-            </h2>
-            <h3 className="text-3xl sm:text-5xl lg:text-6xl font-light tracking-tight leading-tight">
-              Koleksi visual <br />
-              <span className="text-white/40 italic">jemaat Galilea.</span>
-            </h3>
-          </div>
-          <p className="text-sm text-white/50 max-w-sm leading-relaxed font-light">
-            Sistem arsip yang hidup, menyimpan setiap senyum, doa, dan pujian dari Sabat ke Sabat secara permanen.
-          </p>
-        </div>
-
-        {loadingInitial ? (
-          <div className="w-full aspect-[21/9] bg-white/5 animate-shimmer rounded-3xl" />
-        ) : randomFiles.length === 0 ? (
-          <div className="py-32 flex flex-col items-center justify-center text-center border border-white/10 rounded-3xl bg-white/[0.02]">
-            <h4 className="text-2xl sm:text-4xl font-light text-white mb-4">Belum ada dokumentasi.</h4>
-            <p className="text-white/40 text-sm max-w-md font-light leading-relaxed mb-8">
-              Simpan momen pelayanan Sabat pertama Anda agar dapat dikenang bersama oleh seluruh jemaat.
-            </p>
-            <Link
-              href="/upload"
-              className="px-8 py-3 rounded-full bg-white text-black text-xs font-mono tracking-widest uppercase hover:bg-white/80 transition-colors"
-            >
-              Unggah Dokumentasi
-            </Link>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-6 md:gap-10 items-stretch">
-            {/* Asymmetric layout depending on media count */}
-            {randomFiles[0] && (
-              <div 
-                className={`group cursor-pointer flex flex-col ${randomFiles.length > 1 ? 'md:col-span-8' : 'md:col-span-12'}`}
-                onClick={() => setSelectedFileIndex(0)}
-              >
-                <div className={`relative w-full overflow-hidden bg-white/5 border border-white/10 rounded-2xl ${randomFiles.length > 1 ? 'aspect-[16/10]' : 'aspect-[21/9]'}`}>
-                  {randomFiles[0].thumbnailUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={randomFiles[0].thumbnailUrl} alt={randomFiles[0].name} className="w-full h-full object-cover filter grayscale hover:grayscale-0 transition-all duration-700 hover:scale-105" loading="lazy" />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-white/20">
-                      {randomFiles[0].fileType === 'video' ? <VideoIcon className="w-12 h-12" /> : <ImageIcon className="w-12 h-12" />}
-                    </div>
-                  )}
-                  <div className="absolute bottom-6 left-6 right-6 flex justify-between items-end opacity-0 group-hover:opacity-100 transition-opacity duration-500">
-                    <div>
-                      <p className="text-white text-lg font-medium drop-shadow-md">{randomFiles[0].name}</p>
-                      <p className="text-white/70 text-xs font-mono mt-1 drop-shadow-md">{randomFiles[0].sabbathTitle}</p>
-                    </div>
-                    <div className="px-3 py-1 rounded-full bg-black/50 backdrop-blur-md border border-white/20 text-white text-[10px] font-mono tracking-widest uppercase">
-                      {randomFiles[0].fileType}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {randomFiles.length > 1 && (
-              <div className="md:col-span-4 flex flex-col justify-between gap-6 md:gap-10">
-                {randomFiles.slice(1, 3).map((file, idx) => {
-                  const actualIdx = idx + 1;
-                  return (
-                    <div 
-                      key={file.id} 
-                      className="group cursor-pointer flex flex-col h-full"
-                      onClick={() => setSelectedFileIndex(actualIdx)}
-                    >
-                      <div className="relative w-full h-full min-h-[250px] overflow-hidden bg-white/5 border border-white/10 rounded-2xl">
-                        {file.thumbnailUrl ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={file.thumbnailUrl} alt={file.name} className="w-full h-full object-cover filter grayscale hover:grayscale-0 transition-all duration-700 hover:scale-105" loading="lazy" />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center text-white/20">
-                            {file.fileType === 'video' ? <VideoIcon className="w-8 h-8" /> : <ImageIcon className="w-8 h-8" />}
-                          </div>
-                        )}
-                        <div className="absolute top-4 right-4 px-2 py-1 rounded-full bg-black/50 backdrop-blur-md border border-white/20 text-white text-[9px] font-mono tracking-widest uppercase">
-                          {file.fileType}
-                        </div>
-                        <div className="absolute bottom-4 left-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity duration-500">
-                          <p className="text-white text-sm font-medium drop-shadow-md truncate">{file.name}</p>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        )}
-      </section>
-
-      {/* 4. ARCHIVE LINKS */}
-      <section className="relative w-full py-20 px-6 sm:px-12 max-w-[1400px] mx-auto z-20 border-t border-white/10">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-12 sm:gap-20">
-          <Link href="/archive?category=documentation" className="group flex flex-col gap-6">
-            <span className="text-[10px] font-mono tracking-[0.3em] text-white/40 uppercase">Akses Galeri</span>
-            <h4 className="text-3xl sm:text-4xl font-light text-white group-hover:text-white/60 transition-colors">
-              Foto & Video
-            </h4>
-            <div className="w-12 h-[1px] bg-white/20 group-hover:w-full transition-all duration-700" />
-          </Link>
-          <Link href="/archive?category=worship" className="group flex flex-col gap-6">
-            <span className="text-[10px] font-mono tracking-[0.3em] text-white/40 uppercase">Akses Dokumen</span>
-            <h4 className="text-3xl sm:text-4xl font-light text-white group-hover:text-white/60 transition-colors">
-              Berkas Pelayanan
-            </h4>
-            <div className="w-12 h-[1px] bg-white/20 group-hover:w-full transition-all duration-700" />
-          </Link>
-        </div>
-      </section>
-
-      {/* 5. MEMORY (CLOSING STATEMENT) */}
-      <section className="w-full py-32 px-6 flex flex-col items-center justify-center text-center bg-black">
-        <div className="w-[1px] h-24 bg-white/20 mb-16" />
-        <h2 className="text-2xl sm:text-4xl lg:text-5xl font-light tracking-wider uppercase text-white/90 leading-tight">
-          Sebuah museum digital <br />
-          <span className="text-white/40 italic">kehidupan jemaat.</span>
-        </h2>
-        <p className="text-xs font-mono tracking-[0.4em] text-white/30 uppercase mt-16">
-          GMAHK Galilea
-        </p>
-      </section>
-
-      {selectedFileIndex !== null && randomFiles[selectedFileIndex] && (
-        <MediaViewer
-          file={randomFiles[selectedFileIndex]}
-          files={randomFiles}
-          initialIndex={selectedFileIndex}
-          onClose={() => setSelectedFileIndex(null)}
-          onNext={selectedFileIndex < randomFiles.length - 1 ? () => setSelectedFileIndex(selectedFileIndex + 1) : undefined}
-          onPrev={selectedFileIndex > 0 ? () => setSelectedFileIndex(selectedFileIndex - 1) : undefined}
-          onFileDeleted={(deletedId) => {
-            setRandomFiles(prev => prev.filter(f => f.id !== deletedId));
-          }}
-        />
       )}
-    </div>
+      <div className="absolute inset-0 bg-gradient-to-t from-black via-black/5 to-transparent opacity-90" />
+      {file.fileType === 'video' && <span className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full border border-white/20 bg-black/40 backdrop-blur-md"><Play className="h-4 w-4 fill-white" /></span>}
+      <div className="absolute inset-x-0 bottom-0 p-5 sm:p-6">
+        <p className="mb-2 text-[10px] font-mono uppercase tracking-[0.2em] text-white/60">{file.sabbathTitle}</p>
+        <h3 className={`${featured ? 'text-2xl sm:text-3xl' : 'text-base'} line-clamp-2 font-light leading-tight text-white`}>{file.name}</h3>
+      </div>
+    </button>
   );
 }
 
+export default function Home() {
+  const fallbackSabbath = useMemo(() => getNearestSabbath(), []);
+  const [featuredSabbath, setFeaturedSabbath] = useState<FeaturedSabbath>({ date: fallbackSabbath.date, formattedTitle: fallbackSabbath.formattedTitle, year: fallbackSabbath.year, quarter: fallbackSabbath.quarter });
+  const [hasArchivedSabbath, setHasArchivedSabbath] = useState(false);
+  const [mediaFiles, setMediaFiles] = useState<FileItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    fetch('/api/archive/random?count=10')
+      .then(async (response) => {
+        if (!response.ok) throw new Error('Arsip belum dapat dimuat');
+        return response.json();
+      })
+      .then((json) => {
+        if (!active) return;
+        setMediaFiles(json.success ? json.data || [] : []);
+        if (json.success && json.featuredSabbath) {
+          setFeaturedSabbath(json.featuredSabbath);
+          setHasArchivedSabbath(true);
+        }
+      })
+      .catch((error) => console.error(error))
+      .finally(() => active && setLoading(false));
+    return () => { active = false; };
+  }, []);
+
+  const visibleDates = useMemo(() => {
+    const byDate = new Map<string, string>();
+    for (const file of mediaFiles) byDate.set(file.sabbathDate, file.sabbathTitle);
+    return [...byDate.entries()].sort(([a], [b]) => b.localeCompare(a)).slice(0, 5);
+  }, [mediaFiles]);
+
+  return (
+    <div className="min-h-screen bg-black text-white selection:bg-white selection:text-black">
+      <section className="relative flex min-h-[92vh] w-full items-center justify-center overflow-hidden px-6 pt-20 sm:px-12">
+        <div className="absolute inset-0 bg-gradient-to-b from-black via-[#090909] to-black" />
+        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
+          <div className="relative h-[88vh] w-full max-w-[1200px] overflow-hidden opacity-90 mix-blend-screen">
+            <div className="absolute inset-0 z-10 bg-gradient-to-t from-black via-transparent to-black" /><div className="absolute inset-0 z-10 bg-gradient-to-r from-black via-transparent to-black" />
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/jesus-hero.jpg" alt="Ilustrasi Yesus Kristus" className="h-full w-full object-cover object-center grayscale contrast-125 brightness-90 animate-subtle-zoom" />
+          </div>
+        </div>
+
+        <div className="relative z-20 flex h-full w-full max-w-[1400px] flex-col justify-between gap-20 py-12 md:py-20">
+          <div className="flex items-center justify-between animate-fade-in-up">
+            <div><p className="editorial-meta">DIGITAL ARCHIVE</p><p className="mt-2 text-sm font-light uppercase tracking-[0.2em] text-white/80">GMAHK Galilea</p></div>
+            <Link href="/archive?category=documentation" className="hidden items-center gap-3 text-xs uppercase tracking-widest text-white/70 transition hover:text-white md:flex">Jelajahi Arsip <ArrowRight className="h-4 w-4" /></Link>
+          </div>
+
+          <div className="mt-auto flex w-full flex-col items-start justify-between gap-12 lg:flex-row lg:items-end">
+            <div className="pointer-events-none flex flex-col mix-blend-difference">
+              <h1 className="text-[12vw] font-bold uppercase leading-[0.8] tracking-tighter sm:text-[10vw] lg:text-[8vw]">SETIAP SABAT</h1>
+              <h1 className="ml-0 text-[12vw] font-bold uppercase italic leading-[0.8] tracking-tighter text-white/80 sm:text-[10vw] lg:ml-20 lg:text-[8vw]">MENYIMPAN</h1>
+              <h1 className="ml-0 text-[12vw] font-bold uppercase leading-[0.8] tracking-tighter text-white/55 sm:text-[10vw] lg:ml-40 lg:text-[8vw]">CERITA.</h1>
+            </div>
+
+            <div className="w-full rounded-[1.75rem] border border-white/15 bg-black/50 p-7 shadow-2xl backdrop-blur-2xl lg:w-[24rem]">
+              <div className="mb-8 flex items-center justify-between"><span className="editorial-meta">{hasArchivedSabbath ? 'ARSIP SABAT TERBARU' : 'SABAT BERIKUTNYA'}</span><span className={`h-2 w-2 rounded-full ${hasArchivedSabbath ? 'bg-emerald-300 shadow-[0_0_16px_rgba(110,231,183,.8)]' : 'bg-white/40'}`} /></div>
+              {loading ? <div className="mb-8 h-10 w-4/5 rounded bg-white/10 animate-shimmer" /> : <h2 className="mb-8 text-3xl font-light tracking-tight">{featuredSabbath.formattedTitle}</h2>}
+              <Link href={`/archive?category=documentation&sabbath=${featuredSabbath.date}`} className="group flex items-center justify-between border-t border-white/10 pt-5 text-xs font-mono uppercase tracking-widest">{hasArchivedSabbath ? 'Buka koleksi terbaru' : 'Lihat kalender'}<span className="flex h-9 w-9 items-center justify-center rounded-full border border-white/20 transition group-hover:bg-white group-hover:text-black"><ArrowRight className="h-4 w-4" /></span></Link>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="relative z-20 mx-auto w-full max-w-[1400px] px-6 py-28 sm:px-12">
+        <div className="mb-12 flex flex-col justify-between gap-8 md:flex-row md:items-end">
+          <div><span className="editorial-eyebrow">KOLEKSI PILIHAN</span><h2 className="text-4xl font-light tracking-tight sm:text-6xl">Galilea dalam gambar.</h2></div>
+          <div className="max-w-md md:text-right"><p className="mb-5 text-sm font-light leading-relaxed text-white/50">Lebih banyak momen pelayanan, doa, persahabatan, dan pujian—tersusun dari Sabat terbaru.</p>{visibleDates.length > 0 && <div className="flex flex-wrap gap-2 md:justify-end">{visibleDates.map(([date, title], index) => <Link key={date} href={`/archive?category=documentation&sabbath=${date}`} className={`rounded-full border px-3 py-2 text-[9px] font-mono uppercase tracking-wider transition hover:bg-white hover:text-black ${index === 0 ? 'border-white/50 bg-white/10' : 'border-white/10 text-white/50'}`}>{title}</Link>)}</div>}</div>
+        </div>
+
+        {loading ? (
+          <div className="grid grid-cols-1 gap-5 md:grid-cols-3"><div className="h-[30rem] rounded-3xl bg-white/5 animate-shimmer md:col-span-2" /><div className="h-[30rem] rounded-3xl bg-white/5 animate-shimmer" /></div>
+        ) : mediaFiles.length === 0 ? (
+          <div className="rounded-[2rem] border border-white/10 bg-white/[0.025] px-6 py-24 text-center"><ImageIcon className="mx-auto mb-6 h-10 w-10 text-white/25" /><h3 className="mb-3 text-3xl font-light">Belum ada media yang dapat ditampilkan.</h3><p className="mx-auto max-w-md text-sm leading-relaxed text-white/45">Admin dapat mengunggah dokumentasi pertama melalui pusat unggahan.</p></div>
+        ) : (
+          <div className="grid auto-rows-[15rem] grid-cols-1 gap-5 md:grid-cols-3">{mediaFiles.map((file, index) => <MediaCard key={file.id} file={file} featured={index === 0} onOpen={() => setSelectedIndex(index)} />)}</div>
+        )}
+
+        <div className="mt-10 flex justify-center"><Link href={`/archive?category=documentation&sabbath=${featuredSabbath.date}`} className="editorial-button-secondary">Lihat semua dokumentasi <ArrowRight className="h-4 w-4" /></Link></div>
+      </section>
+
+      <section className="mx-auto grid w-full max-w-[1400px] grid-cols-1 gap-12 border-t border-white/10 px-6 py-20 sm:px-12 md:grid-cols-2 md:gap-20">
+        <Link href="/archive?category=documentation" className="group flex flex-col gap-6"><span className="editorial-meta">GALERI PUBLIK</span><h3 className="text-4xl font-light transition group-hover:text-white/60">Foto & Video</h3><div className="h-px w-12 bg-white/25 transition-all duration-700 group-hover:w-full" /></Link>
+        <Link href="/archive?category=worship" className="group flex flex-col gap-6"><span className="editorial-meta">BERKAS PELAYANAN</span><h3 className="text-4xl font-light transition group-hover:text-white/60">Dokumen Ibadah</h3><div className="h-px w-12 bg-white/25 transition-all duration-700 group-hover:w-full" /></Link>
+      </section>
+
+      <section className="flex w-full flex-col items-center justify-center bg-black px-6 py-32 text-center"><div className="mb-16 h-24 w-px bg-white/20" /><h2 className="text-2xl font-light uppercase leading-tight tracking-wider text-white/90 sm:text-4xl lg:text-5xl">Sebuah museum digital<br /><span className="italic text-white/40">kehidupan jemaat.</span></h2></section>
+
+      {selectedIndex !== null && mediaFiles[selectedIndex] && <MediaViewer files={mediaFiles} initialIndex={selectedIndex} onClose={() => setSelectedIndex(null)} onFileDeleted={(id) => setMediaFiles((current) => current.filter((file) => file.id !== id))} />}
+    </div>
+  );
+}
