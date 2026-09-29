@@ -54,6 +54,22 @@ class DriveMemoryCache {
 
 export const driveCache = new DriveMemoryCache();
 
+/**
+ * Treat values copied from .env.example as missing. This prevents local and CI
+ * environments from attempting real OAuth requests with documentation-only
+ * placeholders.
+ */
+export function isConfiguredValue(value: string | undefined): value is string {
+  const normalized = value?.trim();
+  if (!normalized) return false;
+
+  return !(
+    /^your[-_]/i.test(normalized) ||
+    /^replace-with-/i.test(normalized) ||
+    normalized.includes('YOUR_KEY_HERE')
+  );
+}
+
 export async function listAllDriveFiles(
   params: drive_v3.Params$Resource$Files$List,
   driveClient: drive_v3.Drive | null = getGoogleDriveClient()
@@ -176,7 +192,11 @@ export function getGoogleDriveClient() {
   const refreshToken = process.env.GOOGLE_DRIVE_REFRESH_TOKEN?.trim();
 
   // 1. PRIMARY: User OAuth 2.0 with Refresh Token (Personal My Drive)
-  if (clientId && clientSecret && refreshToken) {
+  if (
+    isConfiguredValue(clientId) &&
+    isConfiguredValue(clientSecret) &&
+    isConfiguredValue(refreshToken)
+  ) {
     const oauth2Client = new google.auth.OAuth2(clientId, clientSecret);
     oauth2Client.setCredentials({ refresh_token: refreshToken });
     return google.drive({ version: 'v3', auth: oauth2Client });
@@ -185,7 +205,7 @@ export function getGoogleDriveClient() {
   // 2. Secondary: Explicit Service Account (only if explicitly set in environment)
   const clientEmail = process.env.FIREBASE_CLIENT_EMAIL?.trim();
   let privateKey = process.env.FIREBASE_PRIVATE_KEY?.trim();
-  if (clientEmail && privateKey && !privateKey.includes('YOUR_KEY_HERE')) {
+  if (isConfiguredValue(clientEmail) && isConfiguredValue(privateKey)) {
     privateKey = privateKey.replace(/\\n/g, '\n');
     const auth = new google.auth.JWT({
       email: clientEmail,
@@ -216,12 +236,12 @@ export function getDriveAuthInfo(): {
     fileIbadahFolderId: 'PRESENT' | 'MISSING';
   };
 } {
-  const hasClientId = Boolean(process.env.GOOGLE_CLIENT_ID?.trim());
-  const hasClientSecret = Boolean(process.env.GOOGLE_CLIENT_SECRET?.trim());
-  const hasRefreshToken = Boolean(process.env.GOOGLE_DRIVE_REFRESH_TOKEN?.trim());
-  const hasRootId = Boolean(process.env.GOOGLE_DRIVE_ROOT_FOLDER_ID?.trim());
-  const hasDokId = Boolean(process.env.GOOGLE_DRIVE_DOKUMENTASI_FOLDER_ID?.trim());
-  const hasIbadahId = Boolean(process.env.GOOGLE_DRIVE_FILE_IBADAH_FOLDER_ID?.trim());
+  const hasClientId = isConfiguredValue(process.env.GOOGLE_CLIENT_ID);
+  const hasClientSecret = isConfiguredValue(process.env.GOOGLE_CLIENT_SECRET);
+  const hasRefreshToken = isConfiguredValue(process.env.GOOGLE_DRIVE_REFRESH_TOKEN);
+  const hasRootId = isConfiguredValue(process.env.GOOGLE_DRIVE_ROOT_FOLDER_ID);
+  const hasDokId = isConfiguredValue(process.env.GOOGLE_DRIVE_DOKUMENTASI_FOLDER_ID);
+  const hasIbadahId = isConfiguredValue(process.env.GOOGLE_DRIVE_FILE_IBADAH_FOLDER_ID);
 
   const diagnostics = {
     clientId: hasClientId ? ('PRESENT' as const) : ('MISSING' as const),
@@ -241,7 +261,10 @@ export function getDriveAuthInfo(): {
     };
   }
 
-  if (process.env.FIREBASE_CLIENT_EMAIL?.trim() && process.env.FIREBASE_PRIVATE_KEY?.trim()) {
+  if (
+    isConfiguredValue(process.env.FIREBASE_CLIENT_EMAIL) &&
+    isConfiguredValue(process.env.FIREBASE_PRIVATE_KEY)
+  ) {
     return {
       isAuthenticated: true,
       strategy: 'service_account',
