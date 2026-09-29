@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "cors": "^2.8.6",
-    "firebase": "^12.18.0",
+    "firebase": "^12.19.0",
     "firebase-admin": "^14.3.0",
     "googleapis": "^178.0.0",
     "lucide-react": "^1.42.0",
