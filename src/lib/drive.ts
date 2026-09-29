@@ -1244,6 +1244,7 @@ export async function getRandomFilesFromDrive(count: number = 6): Promise<FileIt
 
             driveCache.set(folderFilesCacheKey, files, 60);
           } catch (err) {
+            if (classifyDriveError(err).kind === 'AUTH_ERROR') throw err;
             console.warn(`[Drive] Error fetching files for sabbath ${sab.date}:`, err);
             files = [];
           }
@@ -1260,6 +1261,7 @@ export async function getRandomFilesFromDrive(count: number = 6): Promise<FileIt
       return eligible.slice(0, count);
     }
   } catch (err) {
+    if (classifyDriveError(err).kind === 'AUTH_ERROR') throw err;
     console.warn('[Drive] getRandomFilesFromDrive fallback failed:', err);
   }
   return [];
