@@ -30,4 +30,10 @@ describe('Drive OAuth callback feedback', () => {
     assert.equal(response.status, 400);
     assert.match(await response.text(), /Kode tidak ditemukan/);
   });
+
+  it('menerima alamat Safari tanpa skema dengan iss sebelum code', async () => {
+    const response = await POST(callbackRequest('localhost:3456/oauth2callback?iss=https://accounts.google.com'));
+    assert.equal(response.status, 400);
+    assert.match(await response.text(), /Kode tidak ditemukan/);
+  });
 });
