@@ -1,6 +1,7 @@
 import { bootstrapDriveArchive } from './drive-bootstrap';
 import { logSystemEvent } from './firestore';
 import { AutomationStatus } from './types';
+import { getWitaDateParts } from './sabbath';
 
 /**
  * Runs idempotent archive folder structure automation:
@@ -13,7 +14,7 @@ import { AutomationStatus } from './types';
 export async function runArchiveAutomation(): Promise<AutomationStatus> {
   try {
     const result = await bootstrapDriveArchive({
-      year: 2026,
+      year: getWitaDateParts().year,
       quarters: [1, 2, 3, 4],
     });
 

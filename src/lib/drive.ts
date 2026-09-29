@@ -1,4 +1,4 @@
-import { google } from 'googleapis';
+import { drive_v3, google } from 'googleapis';
 import { Readable } from 'stream';
 import { ArchiveCategory, FileFormatType, FileItem, SabbathInfo } from './types';
 import {
@@ -53,6 +53,29 @@ class DriveMemoryCache {
 }
 
 export const driveCache = new DriveMemoryCache();
+
+export async function listAllDriveFiles(
+  params: drive_v3.Params$Resource$Files$List,
+  driveClient: drive_v3.Drive | null = getGoogleDriveClient()
+): Promise<drive_v3.Schema$File[]> {
+  const drive = driveClient;
+  if (!drive) return [];
+
+  const files: drive_v3.Schema$File[] = [];
+  let pageToken: string | undefined;
+  do {
+    const response = await drive.files.list({
+      ...params,
+      pageSize: Math.min(params.pageSize || 1000, 1000),
+      pageToken,
+      fields: params.fields ? `nextPageToken,${params.fields}` : 'nextPageToken,files',
+    });
+    files.push(...(response.data.files || []));
+    pageToken = response.data.nextPageToken || undefined;
+  } while (pageToken);
+
+  return files;
+}
 
 /**
  * Clears all cached Google Drive folder structures, tree results, and file lists.
@@ -281,7 +304,9 @@ export async function findFolderByName(
  * Idempotently ensures a folder exists inside a parent folder.
  * If it already exists, returns the existing ID without creating a duplicate.
  */
-export async function ensureFolder(
+const folderCreationLocks = new Map<string, Promise<DriveFolderResult>>();
+
+async function ensureFolderUnlocked(
   parentFolderId: string,
   folderName: string
 ): Promise<DriveFolderResult> {
@@ -320,6 +345,21 @@ export async function ensureFolder(
   } catch (err) {
     throw classifyDriveError(err);
   }
+}
+
+export async function ensureFolder(
+  parentFolderId: string,
+  folderName: string
+): Promise<DriveFolderResult> {
+  const lockKey = `${parentFolderId}:${folderName.toLocaleLowerCase('id-ID')}`;
+  const existingTask = folderCreationLocks.get(lockKey);
+  if (existingTask) return existingTask;
+
+  const task = ensureFolderUnlocked(parentFolderId, folderName).finally(() => {
+    folderCreationLocks.delete(lockKey);
+  });
+  folderCreationLocks.set(lockKey, task);
+  return task;
 }
 
 /**
@@ -599,10 +639,10 @@ export async function resolveSabbathDestinationFolder(
 export function determineFileType(mimeType: string, filename: string): FileFormatType {
   const ext = filename.split('.').pop()?.toLowerCase() || '';
 
-  if (mimeType.startsWith('image/') || ['jpg', 'jpeg', 'png', 'gif', 'webp', 'heic', 'svg'].includes(ext)) {
+  if (mimeType.startsWith('image/') || ['jpg', 'jpeg', 'jfif', 'png', 'gif', 'webp', 'heic', 'heif', 'avif', 'bmp', 'tif', 'tiff', 'svg'].includes(ext)) {
     return 'photo';
   }
-  if (mimeType.startsWith('video/') || ['mp4', 'mkv', 'mov', 'avi', 'webm', '3gp'].includes(ext)) {
+  if (mimeType.startsWith('video/') || ['mp4', 'm4v', 'mkv', 'mov', 'avi', 'webm', '3gp', '3g2', 'mpeg', 'mpg', 'mts', 'm2ts', 'wmv', 'ogv'].includes(ext)) {
     return 'video';
   }
   if (mimeType === 'application/pdf' || ext === 'pdf') {
@@ -611,7 +651,7 @@ export function determineFileType(mimeType: string, filename: string): FileForma
   if (
     ext === 'ppt' ||
     ext === 'pptx' ||
-    ext === 'key' ||
+    ['key', 'odp', 'pps', 'ppsx'].includes(ext) ||
     mimeType.includes('presentation') ||
     mimeType.includes('powerpoint')
   ) {
@@ -620,8 +660,7 @@ export function determineFileType(mimeType: string, filename: string): FileForma
   if (
     ext === 'doc' ||
     ext === 'docx' ||
-    ext === 'txt' ||
-    ext === 'rtf' ||
+    ['txt', 'rtf', 'odt', 'pages', 'md'].includes(ext) ||
     mimeType.includes('word') ||
     mimeType.includes('document')
   ) {
@@ -630,7 +669,7 @@ export function determineFileType(mimeType: string, filename: string): FileForma
   if (
     ext === 'xls' ||
     ext === 'xlsx' ||
-    ext === 'csv' ||
+    ['csv', 'tsv', 'ods', 'numbers'].includes(ext) ||
     mimeType.includes('spreadsheet') ||
     mimeType.includes('excel')
   ) {
@@ -799,13 +838,13 @@ export async function discoverArchiveTree(
   const yearFoldersMap = new Map<number, string>();
   if (categoryFolderId) {
     try {
-      const yearsRes = await drive.files.list({
+      const yearFiles = await listAllDriveFiles({
         q: `'${categoryFolderId}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
         fields: 'files(id, name)',
         spaces: 'drive',
         pageSize: 100,
       });
-      for (const f of yearsRes.data.files || []) {
+      for (const f of yearFiles) {
         if (f.id && f.name) {
           const m = f.name.match(/\b(20\d{2})\b/);
           if (m) {
@@ -840,13 +879,13 @@ export async function discoverArchiveTree(
   const quarterFoldersMap = new Map<number, { id: string; name: string }>();
   if (selectedYearFolderId) {
     try {
-      const qRes = await drive.files.list({
+      const quarterFiles = await listAllDriveFiles({
         q: `'${selectedYearFolderId}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
         fields: 'files(id, name)',
         spaces: 'drive',
         pageSize: 50,
       });
-      for (const f of qRes.data.files || []) {
+      for (const f of quarterFiles) {
         if (f.id && f.name) {
           const qNum = parseQuarterFromFolderName(f.name);
           if (qNum) {
@@ -891,13 +930,13 @@ export async function discoverArchiveTree(
 
   if (selectedQuarterFolderId) {
     try {
-      const sRes = await drive.files.list({
+      const sabbathFolders = await listAllDriveFiles({
         q: `'${selectedQuarterFolderId}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
         fields: 'files(id, name)',
         spaces: 'drive',
         pageSize: 100,
       });
-      for (const f of sRes.data.files || []) {
+      for (const f of sabbathFolders) {
         if (f.id && f.name) {
           const iso = parseIndonesianDateStringToIso(f.name);
           if (iso) {
@@ -982,9 +1021,30 @@ export async function discoverArchiveTree(
 
   if (!activeSabbath) {
     if (selectedYear === nearest.year && selectedQuarter === nearest.quarter) {
-      // Current active quarter: auto-select nearest Sabbath in WITA
-      const nearestInQuarter = sabbaths.find((s) => s.date === nearest.date);
-      activeSabbath = nearestInQuarter ? nearestInQuarter.date : nearest.date;
+      // Current quarter: prefer the newest Sabbath folder that already contains files.
+      const candidates = [...sabbaths]
+        .filter((s) => /^\d{4}-\d{2}-\d{2}$/.test(s.date) && s.date <= todayStr)
+        .sort((a, b) => b.date.localeCompare(a.date));
+      for (const candidate of candidates) {
+        const folderId = targetCategory === 'documentation'
+          ? candidate.documentationFolderId
+          : candidate.worshipFolderId;
+        if (!folderId) continue;
+        const probe = await drive.files.list({
+          q: `'${folderId}' in parents and mimeType != 'application/vnd.google-apps.folder' and trashed = false`,
+          fields: 'files(id)',
+          spaces: 'drive',
+          pageSize: 1,
+        });
+        if ((probe.data.files || []).length > 0) {
+          activeSabbath = candidate.date;
+          break;
+        }
+      }
+      if (!activeSabbath) {
+        const nearestInQuarter = sabbaths.find((s) => s.date === nearest.date);
+        activeSabbath = nearestInQuarter ? nearestInQuarter.date : nearest.date;
+      }
     } else {
       // Previous or future quarter: pick latest folder with Drive presence, or first
       const withDriveFolder = sabbaths.filter((s) =>
@@ -1020,7 +1080,7 @@ export async function discoverArchiveTree(
   let driveFiles: FileItem[] = [];
   if (activeFolderId) {
     try {
-      const fRes = await drive.files.list({
+      const listedFiles = await listAllDriveFiles({
         q: `'${activeFolderId}' in parents and mimeType != 'application/vnd.google-apps.folder' and trashed = false`,
         fields: 'files(id, name, mimeType, size, webViewLink, webContentLink, thumbnailLink, createdTime)',
         spaces: 'drive',
@@ -1028,7 +1088,7 @@ export async function discoverArchiveTree(
         orderBy: 'name asc',
       });
 
-      driveFiles = (fRes.data.files || []).map((f) => ({
+      driveFiles = listedFiles.map((f) => ({
         id: f.id || '',
         name: f.name || 'Berkas Galilea',
         mimeType: f.mimeType || 'application/octet-stream',
@@ -1106,60 +1166,75 @@ export async function getRandomFilesFromDrive(count: number = 6): Promise<FileIt
     const drive = getGoogleDriveClient();
     if (!drive) return [];
 
-    const tree = await discoverArchiveTree({ category: 'documentation' });
-    let eligible: FileItem[] = [];
+    const initialTree = await discoverArchiveTree({ category: 'documentation' });
+    const eligible: FileItem[] = [];
+    const nearest = getNearestSabbath();
+    const years = [...new Set(initialTree.availableYears)].sort((a, b) => b - a);
+    const targets: Array<{ year: number; quarter: number }> = [];
+    for (const year of years) {
+      const firstQuarter = year === nearest.year ? nearest.quarter : 4;
+      for (let quarter = firstQuarter; quarter >= 1; quarter--) targets.push({ year, quarter });
+    }
 
-    // Sort sabbaths from newest to oldest
-    const sortedSabbaths = [...tree.sabbaths].sort((a, b) => b.date.localeCompare(a.date));
-
-    for (const sab of sortedSabbaths) {
+    for (const target of targets) {
       if (eligible.length >= count) break;
-      if (!sab.documentationFolderId) continue;
+      const tree = target.year === initialTree.selectedYear && target.quarter === initialTree.selectedQuarter
+        ? initialTree
+        : await discoverArchiveTree({ category: 'documentation', year: target.year, quarter: target.quarter });
+      const sortedSabbaths = [...tree.sabbaths].sort((a, b) => b.date.localeCompare(a.date));
 
-      const folderFilesCacheKey = `sabbath_files:${sab.documentationFolderId}`;
-      let files = driveCache.get<FileItem[]>(folderFilesCacheKey);
+      for (const sab of sortedSabbaths) {
+        if (eligible.length >= count) break;
+        if (!sab.documentationFolderId || sab.date > getWitaDateParts().dateStr) continue;
 
-      if (!files) {
-        try {
-          const fRes = await drive.files.list({
-            q: `'${sab.documentationFolderId}' in parents and mimeType != 'application/vnd.google-apps.folder' and trashed = false`,
-            fields: 'files(id, name, mimeType, size, webViewLink, webContentLink, thumbnailLink, createdTime)',
-            spaces: 'drive',
-            pageSize: 20,
-          });
+        const folderId = sab.documentationFolderId;
+        const folderFilesCacheKey = `sabbath_files:${folderId}`;
+        let files = driveCache.get<FileItem[]>(folderFilesCacheKey);
 
-          files = (fRes.data.files || []).map((f) => ({
-            id: f.id || '',
-            name: f.name || 'Berkas Galilea',
-            mimeType: f.mimeType || 'application/octet-stream',
-            size: parseInt(f.size || '0', 10),
-            category: 'documentation' as ArchiveCategory,
-            fileType: determineFileType(f.mimeType || '', f.name || ''),
-            sabbathDate: sab.date,
-            sabbathTitle: sab.formattedTitle,
-            year: sab.year,
-            quarter: sab.quarter,
-            folderId: sab.documentationFolderId!,
-            thumbnailUrl: f.thumbnailLink ? f.thumbnailLink.replace(/=s\d+/, '=s800') : undefined,
-            webViewLink: f.webViewLink || undefined,
-            webContentLink: f.webContentLink || undefined,
-            uploadedAt: f.createdTime || new Date().toISOString(),
-            isRandomEligible: true,
-          }));
+        if (!files) {
+          try {
+            const listedFiles = await listAllDriveFiles({
+              q: `'${folderId}' in parents and mimeType != 'application/vnd.google-apps.folder' and trashed = false`,
+              fields: 'files(id, name, mimeType, size, webViewLink, webContentLink, thumbnailLink, createdTime)',
+              spaces: 'drive',
+              pageSize: 1000,
+            });
 
-          driveCache.set(folderFilesCacheKey, files, 60); // Cache for 60 seconds
-        } catch (err) {
-          console.warn(`[Drive] Error fetching files for sabbath ${sab.date}:`, err);
-          files = [];
+            files = listedFiles.map((f) => ({
+              id: f.id || '',
+              name: f.name || 'Berkas Galilea',
+              mimeType: f.mimeType || 'application/octet-stream',
+              size: parseInt(f.size || '0', 10),
+              category: 'documentation' as ArchiveCategory,
+              fileType: determineFileType(f.mimeType || '', f.name || ''),
+              sabbathDate: sab.date,
+              sabbathTitle: sab.formattedTitle,
+              year: sab.year,
+              quarter: sab.quarter,
+              folderId,
+              thumbnailUrl: f.thumbnailLink ? f.thumbnailLink.replace(/=s\d+/, '=s800') : undefined,
+              webViewLink: f.webViewLink || undefined,
+              webContentLink: f.webContentLink || undefined,
+              uploadedAt: f.createdTime || new Date().toISOString(),
+              isRandomEligible: true,
+            }));
+
+            driveCache.set(folderFilesCacheKey, files, 60);
+          } catch (err) {
+            console.warn(`[Drive] Error fetching files for sabbath ${sab.date}:`, err);
+            files = [];
+          }
         }
-      }
 
-      const photosAndVideos = files.filter(f => f.fileType === 'photo' || f.fileType === 'video');
-      eligible = [...eligible, ...photosAndVideos];
+        const photosAndVideos = (files || [])
+          .filter((file) => file.fileType === 'photo' || file.fileType === 'video')
+          .sort(() => 0.5 - Math.random());
+        eligible.push(...photosAndVideos);
+      }
     }
 
     if (eligible.length > 0) {
-      return eligible.sort(() => 0.5 - Math.random()).slice(0, count);
+      return eligible.slice(0, count);
     }
   } catch (err) {
     console.warn('[Drive] getRandomFilesFromDrive fallback failed:', err);
