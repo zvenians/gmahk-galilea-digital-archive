@@ -26,7 +26,7 @@ function escapeHtml(value: string): string {
     .replaceAll("'", '&#039;');
 }
 
-function page(body: string, script = ''): NextResponse {
+function page(body: string, script = '', status = 200): NextResponse {
   const nonce = crypto.randomUUID();
   const html = `<!doctype html>
 <html lang="id">
@@ -52,6 +52,7 @@ function page(body: string, script = ''): NextResponse {
 </html>`;
 
   const response = new NextResponse(html, {
+    status,
     headers: noStoreHeaders('text/html; charset=utf-8'),
   });
   response.headers.set(
@@ -83,11 +84,11 @@ export async function GET(request: NextRequest) {
 
   return page(`
     <h1>Sambungkan ulang Google Drive</h1>
-    <p>Mulai izin Google. Setelah Google mengalihkan ke localhost, salin alamat callback lengkap dari bilah alamat lalu tempel di bawah.</p>
+    <p>Mulai izin Google. Setelah dialihkan ke localhost (halaman tidak dapat dibuka itu normal), salin <strong>seluruh alamat</strong> dari bilah alamat lalu tempel di bawah.</p>
     <a href="/api/drive-oauth?action=start">Mulai izin Google Drive</a>
     <form method="post">
-      <label for="callbackUrl">URL callback</label>
-      <input id="callbackUrl" name="callbackUrl" type="password" autocomplete="off" required />
+      <label for="callbackUrl">Alamat callback lengkap, diawali http://localhost:3456/oauth2callback?code=</label>
+      <input id="callbackUrl" name="callbackUrl" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" required />
       <button type="submit">Tukar dengan token</button>
     </form>
     <p class="muted">Halaman sementara ini akan dihapus setelah koneksi pulih.</p>
@@ -98,14 +99,19 @@ export async function POST(request: NextRequest) {
   try {
     const form = await request.formData();
     const callbackUrl = String(form.get('callbackUrl') || '').trim();
-    const parsed = new URL(callbackUrl);
+    let parsed: URL;
+    try {
+      parsed = new URL(callbackUrl);
+    } catch {
+      return page('<h1>Alamat belum lengkap</h1><p>Yang ditempel bukan URL callback. Salin seluruh alamat di bilah alamat setelah izin Google, mulai dari <code>http://localhost:3456/oauth2callback?code=</code>. Jangan tempel token, kode saja, atau alamat situs Galilea.</p><a href="/api/drive-oauth">Kembali</a>', '', 400);
+    }
     if (parsed.origin !== 'http://localhost:3456' || parsed.pathname !== '/oauth2callback') {
-      return page('<h1>Callback tidak valid</h1><p>Gunakan URL callback localhost yang diberikan Google.</p>');
+      return page('<h1>Alamat callback tidak sesuai</h1><p>Gunakan alamat lengkap dari bilah alamat setelah Google mengalihkan ke localhost, bukan alamat halaman Galilea atau Google.</p><a href="/api/drive-oauth">Kembali</a>', '', 400);
     }
 
     const code = parsed.searchParams.get('code');
     if (!code) {
-      return page('<h1>Kode tidak ditemukan</h1><p>Ulangi proses izin Google Drive.</p>');
+      return page('<h1>Kode tidak ditemukan</h1><p>Alamat localhost harus memuat bagian <code>?code=</code>. Mulai lagi izin Google, lalu salin seluruh alamat callback.</p><a href="/api/drive-oauth">Kembali</a>', '', 400);
     }
 
     const { tokens } = await getOauthClient().getToken(code);
@@ -129,6 +135,10 @@ export async function POST(request: NextRequest) {
     );
   } catch (error) {
     console.error('[Drive OAuth reconnect] Failed:', error instanceof Error ? error.message : error);
-    return page('<h1>Otorisasi gagal</h1><p>Periksa konfigurasi OAuth lalu ulangi proses.</p>');
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.includes('invalid_grant')) {
+      return page('<h1>Kode sudah tidak berlaku</h1><p>Kode Google hanya dapat digunakan sekali dan cepat kedaluwarsa. Mulai ulang izin Google, lalu segera salin dan kirim alamat callback yang baru. Jangan gunakan alamat lama.</p><a href="/api/drive-oauth">Coba lagi</a>', '', 400);
+    }
+    return page('<h1>Otorisasi gagal</h1><p>Google belum dapat menukar kode ini. Mulai ulang izin dan gunakan alamat callback terbaru. Jika tetap gagal, konfigurasi OAuth perlu diperiksa.</p><a href="/api/drive-oauth">Coba lagi</a>', '', 502);
   }
 }
