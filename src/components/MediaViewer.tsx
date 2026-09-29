@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useCallback, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
-import { X, ChevronLeft, ChevronRight, ExternalLink, Trash2, FileText, FileSpreadsheet, Presentation, Video, AlertTriangle, Download, Share2 } from 'lucide-react';
+import { X, ChevronLeft, ChevronRight, ExternalLink, Trash2, FileText, FileSpreadsheet, Presentation, AlertTriangle, Download, Share2 } from 'lucide-react';
 import { FileItem } from '@/lib/types';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
@@ -36,7 +36,6 @@ export default function MediaViewer({
   const [prevInitial, setPrevInitial] = useState(initialIndex);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
-  const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   // Client-side hydration check for safe createPortal to document.body
@@ -98,43 +97,12 @@ export default function MediaViewer({
 
     try {
       setIsDownloading(true);
-      setDownloadProgress(0);
-
-      const response = await fetch(`/api/archive/download?fileId=${currentFile.id}`);
-      
-      if (!response.ok) {
-        const errText = await response.text();
-        throw new Error(errText || 'Gagal mengunduh berkas');
-      }
-
-      const contentLength = response.headers.get('Content-Length');
-      const total = contentLength ? parseInt(contentLength, 10) : null;
-
-      const chunks: Uint8Array[] = [];
-      let received = 0;
-      const reader = response.body?.getReader();
-
-      if (!reader) throw new Error('Tidak dapat membaca respons server');
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        chunks.push(value);
-        received += value.length;
-        if (total) {
-          setDownloadProgress(Math.round((received / total) * 100));
-        }
-      }
-
-      const blob = new Blob(chunks as BlobPart[]);
-      const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.href = url;
-      a.download = currentFile.name;
+      a.href = `/api/archive/download?fileId=${encodeURIComponent(currentFile.id)}`;
+      a.download = '';
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      URL.revokeObjectURL(url);
 
       showToast({
         type: 'success',
@@ -149,7 +117,6 @@ export default function MediaViewer({
       });
     } finally {
       setIsDownloading(false);
-      setDownloadProgress(null);
     }
   };
 
@@ -263,37 +230,27 @@ export default function MediaViewer({
       case 'photo':
         return (
           <div className="relative w-full h-[75vh] flex items-center justify-center p-4">
-            {currentFile.thumbnailUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={currentFile.thumbnailUrl.replace(/=s\d+/, '=s2048')}
-                alt={currentFile.name}
-                className="max-h-full max-w-full object-contain drop-shadow-2xl"
-              />
-            ) : (
-              <div className="flex flex-col items-center justify-center text-white/50 gap-4">
-                <FileText className="w-16 h-16 opacity-50" />
-                <p>Pratinjau gambar belum tersedia</p>
-              </div>
-            )}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={`/api/archive/media?fileId=${encodeURIComponent(currentFile.id)}`}
+              alt={currentFile.name}
+              className="max-h-full max-w-full object-contain drop-shadow-2xl"
+            />
           </div>
         );
 
       case 'video':
         return (
           <div className="w-full max-w-5xl h-[75vh] bg-black border border-white/10 rounded-2xl overflow-hidden shadow-2xl flex items-center justify-center">
-            {currentFile.webViewLink ? (
-              <iframe
-                src={currentFile.webViewLink.replace('/view', '/preview')}
-                className="w-full h-full border-0"
-                allow="autoplay"
-              ></iframe>
-            ) : (
-              <div className="text-center text-white/50">
-                <Video className="w-16 h-16 mx-auto mb-4 opacity-50" />
-                <p>Pemutar video Google Drive</p>
-              </div>
-            )}
+            <video
+              src={`/api/archive/media?fileId=${encodeURIComponent(currentFile.id)}`}
+              className="w-full h-full object-contain"
+              controls
+              playsInline
+              preload="metadata"
+            >
+              Browser Anda belum mendukung pemutar video ini.
+            </video>
           </div>
         );
 
@@ -301,7 +258,7 @@ export default function MediaViewer({
         return (
           <div className="w-full max-w-5xl h-[80vh] bg-black border border-white/10 rounded-2xl overflow-hidden shadow-2xl flex flex-col">
             <iframe
-              src={currentFile.webViewLink ? currentFile.webViewLink.replace('/view', '/preview') : `https://docs.google.com/viewer?url=${encodeURIComponent(currentFile.webContentLink || '')}&embedded=true`}
+              src={`/api/archive/media?fileId=${encodeURIComponent(currentFile.id)}`}
               className="w-full flex-1 border-0"
               title={currentFile.name}
             ></iframe>
@@ -401,9 +358,7 @@ export default function MediaViewer({
             <Download className="w-4 h-4" />
             <span className="text-sm font-semibold">
               {isDownloading ? (
-                downloadProgress !== null && downloadProgress <= 100
-                  ? `${downloadProgress}%`
-                  : 'MENGUNDUH...'
+                'MENYIAPKAN...'
               ) : 'UNDUH'}
             </span>
           </button>

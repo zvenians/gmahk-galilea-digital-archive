@@ -23,8 +23,10 @@ export default function Navbar() {
     { href: '/', label: 'Beranda' },
     { href: '/archive?category=documentation', label: 'Dokumentasi' },
     { href: '/archive?category=worship', label: 'Berkas Ibadah' },
-    { href: '/upload', label: 'Unggah' },
-    ...(role === 'admin' ? [{ href: '/admin', label: 'Admin' }] : []),
+    ...(role === 'admin' ? [
+      { href: '/upload', label: 'Unggah' },
+      { href: '/admin', label: 'Admin' },
+    ] : []),
   ];
 
   return (
