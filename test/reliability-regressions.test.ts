@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { drive_v3 } from 'googleapis';
-import { determineFileType, listAllDriveFiles } from '../src/lib/drive';
+import { determineFileType, isConfiguredValue, listAllDriveFiles } from '../src/lib/drive';
 import { createUploadSessionToken, verifyUploadSessionToken } from '../src/lib/upload-session';
 import { getLatestDatedArchiveFile } from '../src/lib/archive-utils';
 import { FileItem } from '../src/lib/types';
@@ -44,6 +44,14 @@ describe('Upload session integrity', () => {
 });
 
 describe('Archive reliability regressions', () => {
+  it('menganggap nilai contoh konfigurasi sebagai belum dikonfigurasi', () => {
+    assert.equal(isConfiguredValue(undefined), false);
+    assert.equal(isConfiguredValue('your-google-oauth-client-id'), false);
+    assert.equal(isConfiguredValue('replace-with-a-long-random-secret'), false);
+    assert.equal(isConfiguredValue('-----BEGIN PRIVATE KEY-----\\nYOUR_KEY_HERE'), false);
+    assert.equal(isConfiguredValue('real-config-value'), true);
+  });
+
   it('mengenali format media dan dokumen modern', () => {
     assert.equal(determineFileType('application/octet-stream', 'foto.avif'), 'photo');
     assert.equal(determineFileType('application/octet-stream', 'kamera.heif'), 'photo');
