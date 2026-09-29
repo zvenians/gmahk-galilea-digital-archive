@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAdminFirestore } from '@/lib/firebase-admin';
-import { isFileInManagedArchive } from '@/lib/drive';
+import { determineFileType, getGoogleDriveClient, isFileInManagedArchive } from '@/lib/drive';
 import { requireAdmin } from '@/lib/auth-server';
 
 export async function POST(req: NextRequest) {
@@ -20,6 +20,7 @@ export async function POST(req: NextRequest) {
     const results = {
       scanned: snapshot.docs.length,
       invalidated: 0,
+      refreshed: 0,
       errors: 0,
     };
 
@@ -30,7 +31,33 @@ export async function POST(req: NextRequest) {
         if (!isManaged) {
           await doc.ref.update({ isRandomEligible: false });
           results.invalidated++;
+          continue;
         }
+        const drive = getGoogleDriveClient();
+        if (!drive) throw new Error('Google Drive belum terhubung.');
+        const metadata = await drive.files.get({
+          fileId,
+          fields: 'id,name,mimeType,size,thumbnailLink,webViewLink,webContentLink,createdTime,trashed',
+        });
+        if (metadata.data.trashed) {
+          await doc.ref.update({ isRandomEligible: false });
+          results.invalidated++;
+          continue;
+        }
+        const current = doc.data();
+        const fileType = determineFileType(metadata.data.mimeType || '', metadata.data.name || current.name || '');
+        await doc.ref.set({
+          name: metadata.data.name || current.name,
+          mimeType: metadata.data.mimeType || current.mimeType,
+          size: Number(metadata.data.size || current.size || 0),
+          fileType,
+          thumbnailUrl: metadata.data.thumbnailLink?.replace(/=s\d+/, '=s1200') || null,
+          webViewLink: metadata.data.webViewLink || null,
+          webContentLink: metadata.data.webContentLink || null,
+          uploadedAt: metadata.data.createdTime || current.uploadedAt,
+          isRandomEligible: fileType === 'photo' || fileType === 'video',
+        }, { merge: true });
+        results.refreshed++;
       } catch (err) {
         console.error('Error reconciling file:', doc.id, err);
         results.errors++;
