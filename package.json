@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "lint": "eslint",
-    "test": "tsx --env-file=.env.local --test test/*.test.ts",
+    "test": "node --env-file-if-exists=.env.local --import tsx --test test/*.test.ts",
     "drive:connect": "tsx scripts/connect-drive-oauth.ts",
     "drive:bootstrap": "tsx scripts/bootstrap-drive.ts"
   },

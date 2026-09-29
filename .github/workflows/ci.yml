@@ -29,9 +29,6 @@ jobs:
       - name: Run linter
         run: npm run lint
 
-      - name: Prepare test environment
-        run: cp .env.example .env.local
-
       - name: Run automated unit tests
         run: npm run test
 

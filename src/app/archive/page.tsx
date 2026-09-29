@@ -121,6 +121,7 @@ function ArchiveContent() {
                 onClick={() => {
                   if (category !== 'documentation') {
                     setLoading(true);
+                    setSelectedSabbath('');
                     setCategory('documentation');
                   }
                 }}
@@ -134,6 +135,7 @@ function ArchiveContent() {
                 onClick={() => {
                   if (category !== 'worship') {
                     setLoading(true);
+                    setSelectedSabbath('');
                     setCategory('worship');
                   }
                 }}
@@ -205,28 +207,36 @@ function ArchiveContent() {
 
         {/* 3. SABBATH SELECTOR (TIMELINE) */}
         {sabbaths.length > 0 && (
-          <div className="py-6 overflow-x-auto scrollbar-none flex items-center gap-3 border-b border-white/10">
-            <span className="editorial-meta shrink-0 mr-2">SABAT:</span>
-            {sabbaths.map((sab) => {
-              const isSelected = selectedSabbath === sab.date || selectedSabbath === sab.formattedTitle;
-              return (
-                <button
-                  key={sab.date}
-                  onClick={() => {
-                    if (selectedSabbath !== sab.date) {
-                      setLoading(true);
-                      setSelectedSabbath(sab.date);
-                    }
-                  }}
-                  className={`px-5 py-3 rounded-full text-xs font-mono tracking-widest uppercase whitespace-nowrap transition-all shrink-0 ${
-                    isSelected ? 'border border-white text-white' : 'border border-transparent text-white/40 hover:text-white'
-                  }`}
-                >
-                  {sab.formattedTitle.replace('Sabat, ', '')}
-                </button>
-              );
-            })}
-          </div>
+          <section className="border-b border-white/10 py-8">
+            <div className="mb-5 flex items-end justify-between gap-6">
+              <div>
+                <span className="editorial-meta">PILIH TANGGAL SABAT</span>
+                <h2 className="mt-2 text-2xl font-light text-white">{sabbaths.find((sab) => sab.date === selectedSabbath)?.formattedTitle || 'Koleksi terbaru'}</h2>
+              </div>
+              <span className="hidden text-[10px] font-mono uppercase tracking-[0.18em] text-white/35 sm:block">Geser untuk melihat tanggal lain</span>
+            </div>
+            <div className="scrollbar-none flex snap-x items-stretch gap-3 overflow-x-auto pb-2">
+              {sabbaths.map((sab) => {
+                const isSelected = selectedSabbath === sab.date || selectedSabbath === sab.formattedTitle;
+                const parts = /^\d{4}-\d{2}-\d{2}$/.test(sab.date) ? sab.date.split('-') : null;
+                return (
+                  <button
+                    key={sab.date}
+                    onClick={() => {
+                      if (selectedSabbath !== sab.date) {
+                        setLoading(true);
+                        setSelectedSabbath(sab.date);
+                      }
+                    }}
+                    className={`min-w-[9.5rem] snap-start rounded-2xl border p-4 text-left transition-all ${isSelected ? 'border-white bg-white text-black shadow-[0_18px_50px_rgba(255,255,255,.12)]' : 'border-white/10 bg-white/[0.025] text-white hover:border-white/30 hover:bg-white/[0.06]'}`}
+                  >
+                    <span className={`block text-[9px] font-mono uppercase tracking-[0.18em] ${isSelected ? 'text-black/50' : 'text-white/35'}`}>{isSelected ? 'TERPILIH' : sab.isUpcoming ? 'MENDATANG' : 'ARSIP'}</span>
+                    {parts ? <><span className="mt-5 block text-3xl font-light leading-none">{Number(parts[2])}</span><span className={`mt-2 block text-[10px] font-mono uppercase tracking-wider ${isSelected ? 'text-black/60' : 'text-white/55'}`}>{sab.formattedTitle.replace(/^\d+\s+/, '')}</span></> : <span className="mt-5 block text-sm font-light">{sab.formattedTitle}</span>}
+                  </button>
+                );
+              })}
+            </div>
+          </section>
         )}
 
         {/* 3.5. TYPE FILTERS */}
@@ -290,6 +300,12 @@ function ArchiveContent() {
                       <img
                         src={file.thumbnailUrl}
                         alt={file.name}
+                        onError={(event) => {
+                          const fallback = `/api/archive/media?fileId=${encodeURIComponent(file.id)}`;
+                          if (event.currentTarget.src !== new URL(fallback, window.location.origin).href) {
+                            event.currentTarget.src = fallback;
+                          }
+                        }}
                         className="w-full h-auto object-cover transition-transform duration-700 group-hover:scale-105 filter grayscale hover:grayscale-0"
                         loading="lazy"
                       />
@@ -360,6 +376,5 @@ export default function ArchivePage() {
     </Suspense>
   );
 }
-
 
 

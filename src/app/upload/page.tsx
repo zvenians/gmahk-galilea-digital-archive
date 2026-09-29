@@ -26,6 +26,7 @@ interface QueueItem {
   error?: string;
   xhr?: XMLHttpRequest;
   sessionUrl?: string;
+  uploadToken?: string;
   safeFileName?: string;
   destination?: Record<string, unknown>;
 }
@@ -37,14 +38,8 @@ function UploadContent() {
   const queryCategory = searchParams.get('category') as ArchiveCategory | null;
 
   const { showToast } = useToast();
-  const { getIdToken } = useAuth();
+  const { user, role, loading: authLoading, getIdToken } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const [CLIENT_BUILD_VERSION] = useState("1b19bee_diagnostic_2");
-
-  useEffect(() => {
-    console.log(`[Diagnostic] CLIENT_BUILD_VERSION: ${CLIENT_BUILD_VERSION}`);
-  }, [CLIENT_BUILD_VERSION]);
 
   const [category, setCategory] = useState<ArchiveCategory>(queryCategory || 'documentation');
   const [sabbathList, setSabbathList] = useState<SabbathInfo[]>([]);
@@ -138,8 +133,12 @@ function UploadContent() {
 
     try {
       const idToken = await getIdToken();
+      if (!idToken || role !== 'admin') {
+        throw new Error('Sesi admin tidak tersedia. Silakan masuk kembali.');
+      }
       
       let sessionUrl = item.sessionUrl;
+      let uploadToken = item.uploadToken;
       let safeFileName = item.safeFileName;
       let destination = item.destination;
 
@@ -162,9 +161,10 @@ function UploadContent() {
           const initData = await initRes.json();
           if (!initData.success) throw new Error(initData.error || 'Gagal inisialisasi upload');
           sessionUrl = initData.sessionUrl;
+          uploadToken = initData.uploadToken;
           safeFileName = initData.safeFileName;
           destination = initData.destination;
-          setQueue(prev => prev.map(q => q.id === id ? { ...q, sessionUrl, safeFileName, destination } : q));
+          setQueue(prev => prev.map(q => q.id === id ? { ...q, sessionUrl, uploadToken, safeFileName, destination } : q));
       };
 
       if (!sessionUrl) {
@@ -175,7 +175,7 @@ function UploadContent() {
           throw new Error('Sesi upload tidak dapat dibuat');
       }
 
-      const CHUNK_SIZE = 4 * 1024 * 1024; // 4 MB chunk
+      const CHUNK_SIZE = 8 * 1024 * 1024; // 8 MB; kelipatan 256 KiB sesuai protokol resumable Drive
       const totalSize = item.file.size;
       let start = 0;
       let driveFileId = null;
@@ -377,11 +377,7 @@ function UploadContent() {
           body: JSON.stringify({
               action: 'finalize',
               fileId: driveFileId,
-              fileName: safeFileName,
-              mimeType: item.file.type || 'application/octet-stream',
-              fileSize: item.file.size,
-              category,
-              destination
+              uploadToken,
           })
       });
       
@@ -449,6 +445,15 @@ function UploadContent() {
   };
 
   const handleStartUploads = () => {
+    if (!user || role !== 'admin') {
+      showToast({
+        type: 'error',
+        message: 'Akses Admin Diperlukan',
+        description: 'Masuk sebagai admin sebelum memulai unggahan.',
+      });
+      router.push('/login');
+      return;
+    }
     if (queue.filter(q => q.status === 'WAITING').length === 0) return;
     setUploadActive(true);
   };
@@ -484,6 +489,27 @@ function UploadContent() {
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
   };
+
+  if (authLoading) {
+    return <main className="min-h-screen bg-[#050505] text-white flex items-center justify-center"><p className="editorial-meta">MEMERIKSA SESI...</p></main>;
+  }
+
+  if (!user || role !== 'admin') {
+    return (
+      <main className="min-h-screen bg-[#050505] text-white">
+        <Navbar />
+        <section className="min-h-screen flex items-center justify-center px-6">
+          <div className="max-w-lg text-center border border-white/10 bg-white/[0.03] rounded-[2rem] p-10">
+            <AlertCircle className="w-10 h-10 mx-auto mb-6 text-white/70" />
+            <p className="editorial-eyebrow">AREA TERBATAS</p>
+            <h1 className="text-3xl font-light mb-4">Unggahan hanya untuk admin.</h1>
+            <p className="text-sm text-white/50 leading-relaxed mb-8">Masuk dengan akun pengurus agar setiap unggahan tercatat dan tersinkron aman dengan Google Drive.</p>
+            <Link href="/login" className="editorial-button">Masuk sebagai admin</Link>
+          </div>
+        </section>
+      </main>
+    );
+  }
 
   return (
     <main className="min-h-screen bg-[#050505] text-white">
@@ -586,6 +612,7 @@ function UploadContent() {
             <input
               type="file"
               multiple
+              accept="image/*,video/*,.pdf,.doc,.docx,.odt,.rtf,.txt,.ppt,.pptx,.odp,.key,.xls,.xlsx,.ods,.csv,.tsv,.pages,.numbers"
               ref={fileInputRef}
               onChange={handleFileSelect}
               className="hidden"

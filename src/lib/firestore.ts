@@ -8,11 +8,13 @@ import { getDriveAuthInfo, getGoogleDriveClient, classifyDriveError } from './dr
  */
 export async function indexFile(file: FileItem, userToken?: string): Promise<void> {
   const db = getAdminFirestore();
+  let adminError: unknown;
   if (db) {
     try {
       await db.collection('fileIndex').doc(file.id).set(file);
       return;
     } catch (err) {
+      adminError = err;
       console.warn('[Firestore Admin] Index file failed:', err instanceof Error ? err.message : err);
     }
   }
@@ -43,13 +45,18 @@ export async function indexFile(file: FileItem, userToken?: string): Promise<voi
       if (res.ok) {
         return;
       }
-      console.warn('[Firestore REST] Index file returned status', res.status);
+      const detail = await res.text();
+      throw new Error(`Firestore REST menolak indeks (${res.status}): ${detail.slice(0, 300)}`);
     } catch (restErr) {
       console.warn('[Firestore REST] Error indexing file:', restErr);
+      throw restErr;
     }
   }
 
-  console.info('[Firestore] File uploaded to Drive successfully. ID:', file.id);
+  if (adminError) {
+    throw adminError;
+  }
+  throw new Error('Firestore Admin tidak tersedia dan token pengguna tidak diberikan.');
 }
 
 /**
@@ -115,9 +122,10 @@ export async function getFilesBySabbath(
               fileType: (f.fileType?.stringValue as FileItem['fileType']) || 'photo',
               sabbathDate: f.sabbathDate?.stringValue || sabbathDate,
               sabbathTitle: f.sabbathTitle?.stringValue || '',
-              year: parseInt(f.year?.integerValue || '2026', 10),
+              year: parseInt(f.year?.integerValue || sabbathDate.slice(0, 4) || String(new Date().getFullYear()), 10),
               quarter: parseInt(f.quarter?.integerValue || '3', 10),
               folderId: f.folderId?.stringValue || '',
+              thumbnailUrl: f.thumbnailUrl?.stringValue,
               webViewLink: f.webViewLink?.stringValue,
               webContentLink: f.webContentLink?.stringValue,
               uploadedBy: f.uploadedBy?.stringValue,
@@ -152,8 +160,12 @@ export async function getRandomArchiveSample(limitCount: number = 6): Promise<Fi
         .limit(limitCount * 2)
         .get();
       const all = snap.docs.map((d: QueryDocumentSnapshot) => d.data() as FileItem);
-      if (all.length > 0) {
-        return all.sort(() => 0.5 - Math.random()).slice(0, limitCount);
+      const eligible = all.filter((item) =>
+        item.category === 'documentation' &&
+        (item.fileType === 'photo' || item.fileType === 'video')
+      );
+      if (eligible.length > 0) {
+        return eligible.sort(() => 0.5 - Math.random()).slice(0, limitCount);
       }
     }
   } catch (err) {
@@ -183,9 +195,10 @@ export async function getRandomArchiveSample(limitCount: number = 6): Promise<Fi
               fileType: (f.fileType?.stringValue as FileItem['fileType']) || 'photo',
               sabbathDate: f.sabbathDate?.stringValue || '',
               sabbathTitle: f.sabbathTitle?.stringValue || '',
-              year: parseInt(f.year?.integerValue || '2026', 10),
+              year: parseInt(f.year?.integerValue || (f.sabbathDate?.stringValue || '').slice(0, 4) || String(new Date().getFullYear()), 10),
               quarter: parseInt(f.quarter?.integerValue || '3', 10),
               folderId: f.folderId?.stringValue || '',
+              thumbnailUrl: f.thumbnailUrl?.stringValue,
               webViewLink: f.webViewLink?.stringValue,
               webContentLink: f.webContentLink?.stringValue,
               uploadedBy: f.uploadedBy?.stringValue,
@@ -194,8 +207,13 @@ export async function getRandomArchiveSample(limitCount: number = 6): Promise<Fi
             });
           }
         }
-        if (items.length > 0) {
-          return items.sort(() => 0.5 - Math.random()).slice(0, limitCount);
+        const eligibleItems = items.filter((item) =>
+          item.category === 'documentation' &&
+          item.isRandomEligible &&
+          (item.fileType === 'photo' || item.fileType === 'video')
+        );
+        if (eligibleItems.length > 0) {
+          return eligibleItems.sort(() => 0.5 - Math.random()).slice(0, limitCount);
         }
       }
     }
