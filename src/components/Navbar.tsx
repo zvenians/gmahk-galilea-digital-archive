@@ -5,6 +5,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
+import styles from '@/components/archive/workspace.module.css';
 import {
   Menu,
   X,
@@ -15,6 +16,7 @@ import {
 
 export default function Navbar() {
   const pathname = usePathname();
+  const isViewer = pathname === '/' || pathname === '/archive';
   const { user, role, loading, roleLoading, isSigningIn, signInWithGoogle, signOut } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
@@ -30,7 +32,7 @@ export default function Navbar() {
   ];
 
   return (
-    <header className="sticky top-0 z-50 backdrop-blur-md bg-black/70 border-b border-white/10 transition-all">
+    <header className={`sticky top-0 z-50 backdrop-blur-md bg-black/70 border-b border-white/10 transition-all ${isViewer ? styles.viewerHeader : ''}`}>
       <div className="max-w-[1400px] mx-auto px-6 sm:px-12">
         <div className="flex items-center justify-between h-20">
           {/* Brand Logo */}
@@ -44,10 +46,10 @@ export default function Navbar() {
             />
             <div className="flex flex-col">
               <span className="hidden sm:block font-mono tracking-[0.2em] text-white/90 text-xs uppercase">
-                GALILEA
+                GMAHK Galilea
               </span>
               <span className="block sm:hidden font-mono tracking-[0.2em] text-white/90 text-xs uppercase">
-                GALILEA
+                GMAHK Galilea
               </span>
             </div>
           </Link>
@@ -153,8 +155,9 @@ export default function Navbar() {
           <div className="flex md:hidden items-center gap-2">
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="p-2 text-white/80 hover:text-stone-950 transition-colors"
+              className="p-2 text-white/80 hover:text-white transition-colors"
               aria-label="Menu"
+              aria-expanded={mobileMenuOpen}
             >
               {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             </button>
