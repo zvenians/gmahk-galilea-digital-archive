@@ -68,4 +68,16 @@ describe('GMAHK Galilea - Dynamic Archive Tree Discovery & Parsers', () => {
     assert.equal(treeQ2.selectedYear, 2026);
     assert.ok(treeQ2.selectedSabbath.startsWith('2026-04-') || treeQ2.selectedSabbath.startsWith('2026-05-') || treeQ2.selectedSabbath.startsWith('2026-06-'));
   });
+
+  it('harus mengikuti tahun dan triwulan dari tautan Sabat yang eksplisit', async () => {
+    const tree = await discoverArchiveTree({
+      year: 2026,
+      quarter: 4,
+      sabbath: '2026-09-26',
+    });
+
+    assert.equal(tree.selectedYear, 2026);
+    assert.equal(tree.selectedQuarter, 3);
+    assert.equal(tree.selectedSabbath, '2026-09-26');
+  });
 });
