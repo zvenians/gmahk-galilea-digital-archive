@@ -84,10 +84,10 @@ export async function GET(request: NextRequest) {
 
   return page(`
     <h1>Sambungkan ulang Google Drive</h1>
-    <p>Mulai izin Google. Setelah dialihkan ke localhost (halaman tidak dapat dibuka itu normal), salin <strong>seluruh alamat</strong> dari bilah alamat lalu tempel di bawah.</p>
+    <p>Mulai izin Google. Setelah dialihkan ke localhost (halaman tidak dapat dibuka itu normal), salin <strong>seluruh alamat</strong> dari bilah alamat lalu tempel di bawah. Safari mungkin menyembunyikan awalan <code>http://</code>. Alamat dapat memuat <code>iss=https://...</code> sebelum parameter <code>code=</code>; itu normal.</p>
     <a href="/api/drive-oauth?action=start">Mulai izin Google Drive</a>
     <form method="post">
-      <label for="callbackUrl">Alamat callback lengkap, diawali http://localhost:3456/oauth2callback?code=</label>
+      <label for="callbackUrl">Alamat callback localhost:3456/oauth2callback dari Safari (termasuk semua parameter)</label>
       <input id="callbackUrl" name="callbackUrl" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" required />
       <button type="submit">Tukar dengan token</button>
     </form>
@@ -99,11 +99,14 @@ export async function POST(request: NextRequest) {
   try {
     const form = await request.formData();
     const callbackUrl = String(form.get('callbackUrl') || '').trim();
+    const normalizedUrl = callbackUrl.startsWith('localhost:3456/oauth2callback')
+      ? `http://${callbackUrl}`
+      : callbackUrl;
     let parsed: URL;
     try {
-      parsed = new URL(callbackUrl);
+      parsed = new URL(normalizedUrl);
     } catch {
-      return page('<h1>Alamat belum lengkap</h1><p>Yang ditempel bukan URL callback. Salin seluruh alamat di bilah alamat setelah izin Google, mulai dari <code>http://localhost:3456/oauth2callback?code=</code>. Jangan tempel token, kode saja, atau alamat situs Galilea.</p><a href="/api/drive-oauth">Kembali</a>', '', 400);
+      return page('<h1>Alamat belum lengkap</h1><p>Yang ditempel bukan alamat callback. Salin seluruh alamat dari Safari, termasuk bagian setelah <code>localhost:3456/oauth2callback?</code>. Jika Safari tidak menampilkan <code>http://</code>, tempel saja alamat yang disalinnya. Jangan tempel token atau kode saja.</p><a href="/api/drive-oauth">Kembali</a>', '', 400);
     }
     if (parsed.origin !== 'http://localhost:3456' || parsed.pathname !== '/oauth2callback') {
       return page('<h1>Alamat callback tidak sesuai</h1><p>Gunakan alamat lengkap dari bilah alamat setelah Google mengalihkan ke localhost, bukan alamat halaman Galilea atau Google.</p><a href="/api/drive-oauth">Kembali</a>', '', 400);
@@ -111,7 +114,7 @@ export async function POST(request: NextRequest) {
 
     const code = parsed.searchParams.get('code');
     if (!code) {
-      return page('<h1>Kode tidak ditemukan</h1><p>Alamat localhost harus memuat bagian <code>?code=</code>. Mulai lagi izin Google, lalu salin seluruh alamat callback.</p><a href="/api/drive-oauth">Kembali</a>', '', 400);
+      return page('<h1>Kode tidak ditemukan</h1><p>Alamat localhost harus memuat parameter <code>code=</code>, yang bisa muncul setelah <code>iss=https://...</code>. Mulai lagi izin Google, lalu salin seluruh alamat callback.</p><a href="/api/drive-oauth">Kembali</a>', '', 400);
     }
 
     const { tokens } = await getOauthClient().getToken(code);
