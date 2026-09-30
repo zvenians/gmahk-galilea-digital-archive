@@ -795,8 +795,16 @@ export interface DiscoveredArchiveTreeResult {
 export async function discoverArchiveTree(
   params: DiscoverArchiveTreeParams = {}
 ): Promise<DiscoveredArchiveTreeResult> {
+  const sabbathDetails = params.sabbath && isValidSabbathDate(params.sabbath)
+    ? parseSabbathDetails(params.sabbath)
+    : null;
+  const normalizedParams: DiscoverArchiveTreeParams = {
+    ...params,
+    year: sabbathDetails?.year ?? params.year,
+    quarter: sabbathDetails?.quarter ?? params.quarter,
+  };
   const targetCategory: ArchiveCategory = params.category || 'documentation';
-  const cacheKey = `tree:${targetCategory}:${params.year || 'auto'}:${params.quarter || 'auto'}:${params.sabbath || 'auto'}`;
+  const cacheKey = `tree:${targetCategory}:${normalizedParams.year || 'auto'}:${normalizedParams.quarter || 'auto'}:${normalizedParams.sabbath || 'auto'}`;
   const cachedTree = driveCache.get<DiscoveredArchiveTreeResult>(cacheKey);
   if (cachedTree) {
     return cachedTree;
@@ -808,15 +816,15 @@ export async function discoverArchiveTree(
   const drive = getGoogleDriveClient();
   if (!drive) {
     // Offline / dev fallback when no Google credentials configured
-    const selectedYear = params.year || nearest.year;
-    const selectedQuarter = params.quarter || nearest.quarter;
+    const selectedYear = normalizedParams.year || nearest.year;
+    const selectedQuarter = normalizedParams.quarter || nearest.quarter;
     const availableYears = [selectedYear, selectedYear - 1];
     const quarters = [1, 2, 3, 4].map((q) => ({
       quarter: q,
       title: getQuarterTitle(q),
     }));
     const sabbaths = getSabbathsInQuarter(selectedYear, selectedQuarter);
-    let activeSabbath = params.sabbath || '';
+    let activeSabbath = normalizedParams.sabbath || '';
     if (!activeSabbath) {
       if (selectedYear === nearest.year && selectedQuarter === nearest.quarter) {
         activeSabbath = nearest.date;
@@ -888,7 +896,7 @@ export async function discoverArchiveTree(
   const availableYears = Array.from(yearFoldersMap.keys()).sort((a, b) => b - a);
 
   // Determine Selected Year
-  let selectedYear = params.year;
+  let selectedYear = normalizedParams.year;
   if (!selectedYear || !availableYears.includes(selectedYear)) {
     selectedYear = availableYears.includes(nearest.year) ? nearest.year : availableYears[0];
   }
@@ -931,7 +939,7 @@ export async function discoverArchiveTree(
   });
 
   // Determine Selected Quarter
-  let selectedQuarter = params.quarter;
+  let selectedQuarter = normalizedParams.quarter;
   if (!selectedQuarter || selectedQuarter < 1 || selectedQuarter > 4) {
     if (selectedYear === nearest.year) {
       selectedQuarter = nearest.quarter;
@@ -1033,9 +1041,9 @@ export async function discoverArchiveTree(
 
   // 5. Determine Active Sabbath
   let activeSabbath = '';
-  if (params.sabbath) {
+  if (normalizedParams.sabbath) {
     const matched = sabbaths.find(
-      (s) => s.date === params.sabbath || s.formattedTitle === params.sabbath
+      (s) => s.date === normalizedParams.sabbath || s.formattedTitle === normalizedParams.sabbath
     );
     if (matched) {
       activeSabbath = matched.date;
