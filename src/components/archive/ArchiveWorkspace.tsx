@@ -59,6 +59,28 @@ const filters = [
   { id: "video", label: "Video", icon: Video },
   { id: "document", label: "Dokumen", icon: FileText },
 ] as const;
+const bookPreviewFiles: FileItem[] = [
+  ["demo-1", "Pelayanan Sabat.jpg", "https://lh3.googleusercontent.com/drive-storage/AJQWtBPCchIA_fG9qZCCPl8kPd65jF2bfCOIIPnTLhpHjnwOcuBljifQJNN27rBY7aSHEd3_HzFAqi5QgCgInqvTJVX6yNGt5d1d-6M4BJIVC-hpzifQ=s800"],
+  ["demo-2", "Kebersamaan Jemaat.jpg", "https://lh3.googleusercontent.com/drive-storage/AJQWtBPKNX79YcOsKCKXhKpMOr_WmJ9zp0JnXbIxaQTRgdvMUHSfT_ByqC4N7aGzYGA8XJdYmM8a3yI_b30iEhMEG_5vPpUQJm_SpI7icMZQY-odd2rZ=s800"],
+  ["demo-3", "Ibadah Galilea.jpg", "https://lh3.googleusercontent.com/drive-storage/AJQWtBNnuh42B_lAH5vOgQorOZyanYpCbC1H61F6IF4ztztFswcxj2oOj8DgnylWXWDoeJ-rm-o1Q3gpwuYRAgKQOLHqxvvBKwOl3qzYHVtg5N-0sFq7=s800"],
+  ["demo-4", "Cerita Pelayanan.jpg", "https://lh3.googleusercontent.com/drive-storage/AJQWtBOhxzUwA8Ico5EHWWEWSPPBLRvfmakiv1MWa-_Klg8ddIOQS5VCVvFGZtwUSAdowJ5n-z4yE6aufNIBvg64U9wKqQnPjE-eCq60AvaUxTY51wgt=s800"],
+  ["demo-5", "Kenangan Sabat.jpg", "https://lh3.googleusercontent.com/drive-storage/AJQWtBOvmmJsZ-h4Z_2C1rUJYcXI6sNdxPrweoJH3Mrj1yMQnmu6LfbRqKHF-fWtfldVlAa6SnRqMJ_WGAZGVv6nKVaC9IhoRvO8bagb5RGn6yqwKBja=s800"],
+].map(([id, name, thumbnailUrl]) => ({
+  id,
+  name,
+  thumbnailUrl,
+  mimeType: "image/jpeg",
+  size: 1024000,
+  category: "documentation",
+  fileType: "photo",
+  sabbathDate: "2026-09-26",
+  sabbathTitle: "26 September 2026",
+  year: 2026,
+  quarter: 3,
+  folderId: "preview",
+  uploadedAt: "2026-09-26T10:00:00Z",
+  isRandomEligible: true,
+}));
 const fileKind = (file: FileItem) =>
   file.fileType === "photo"
     ? "Foto"
@@ -167,6 +189,14 @@ export default function ArchiveWorkspace({
   const swipeStart = useRef<number | null>(null);
 
   useEffect(() => {
+    if (mode === "selection" && window.location.search.includes("book-demo")) {
+      const timer = window.setTimeout(() => {
+        setFiles(bookPreviewFiles);
+        setDeckIndex(2);
+        setLoading(false);
+      }, 0);
+      return () => window.clearTimeout(timer);
+    }
     const controller = new AbortController();
     const params = new URLSearchParams({
       year: String(year),
