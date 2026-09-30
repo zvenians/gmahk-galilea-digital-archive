@@ -9,7 +9,11 @@ import {
   Search,
 } from 'lucide-react';
 import { ArchiveCategory, FileItem, SabbathInfo } from '@/lib/types';
-import { getNearestSabbath } from '@/lib/sabbath';
+import {
+  getNearestSabbath,
+  isValidSabbathDate,
+  parseSabbathDetails,
+} from '@/lib/sabbath';
 import MediaViewer from '@/components/MediaViewer';
 
 function ArchiveContent() {
@@ -18,8 +22,11 @@ function ArchiveContent() {
   const initialSabbath = searchParams.get('sabbath') || '';
 
   const initialNearest = getNearestSabbath();
-  const [year, setYear] = useState<number>(initialNearest.year);
-  const [quarter, setQuarter] = useState<number>(initialNearest.quarter);
+  const initialSabbathDetails = isValidSabbathDate(initialSabbath)
+    ? parseSabbathDetails(initialSabbath)
+    : null;
+  const [year, setYear] = useState<number>(initialSabbathDetails?.year ?? initialNearest.year);
+  const [quarter, setQuarter] = useState<number>(initialSabbathDetails?.quarter ?? initialNearest.quarter);
   const [category, setCategory] = useState<ArchiveCategory>(initialCategory);
   const [filterType, setFilterType] = useState<'all' | 'photo' | 'video' | 'document'>('all');
   const [searchQuery, setSearchQuery] = useState('');
