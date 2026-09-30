@@ -156,12 +156,15 @@ export default function ArchiveWorkspace({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [viewerId, setViewerId] = useState<string | null>(null);
   const [deckIndex, setDeckIndex] = useState(0);
+  const [bookOpened, setBookOpened] = useState(false);
+  const [turnDirection, setTurnDirection] = useState<-1 | 1 | null>(null);
   const [shareStatus, setShareStatus] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [ratios, setRatios] = useState<Record<string, number>>({});
   const [width, setWidth] = useState(900);
   const galleryRef = useRef<HTMLDivElement>(null);
   const returnFocus = useRef<HTMLElement | null>(null);
+  const swipeStart = useRef<number | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -184,6 +187,8 @@ export default function ArchiveWorkspace({
       })
       .then((json) => {
         setError(false);
+        setBookOpened(false);
+        setTurnDirection(null);
         if (mode === "selection" && !browseArchive) {
           const selectionFiles = json.data || [];
           setFiles(selectionFiles);
@@ -277,6 +282,12 @@ export default function ArchiveWorkspace({
   const deckFiles = visibleFiles.slice(0, 9);
   const activeDeckIndex = Math.min(deckIndex, Math.max(0, deckFiles.length - 1));
   const activeDeckFile = deckFiles[activeDeckIndex];
+  const previousDeckIndex = deckFiles.length
+    ? (activeDeckIndex - 1 + deckFiles.length) % deckFiles.length
+    : 0;
+  const nextDeckIndex = deckFiles.length
+    ? (activeDeckIndex + 1) % deckFiles.length
+    : 0;
   const viewerIndex = visibleFiles.findIndex((file) => file.id === viewerId);
   const ratioFor = (file: FileItem) =>
     ratios[file.id] ||
@@ -289,11 +300,25 @@ export default function ArchiveWorkspace({
       ),
     [],
   );
+  useEffect(() => {
+    if (mode !== "selection" || !files.length) return;
+    const timer = window.setTimeout(() => setBookOpened(true), 180);
+    return () => window.clearTimeout(timer);
+  }, [files, mode]);
+
   const moveDeck = (direction: -1 | 1) => {
-    if (!deckFiles.length) return;
-    setDeckIndex(
-      (activeDeckIndex + direction + deckFiles.length) % deckFiles.length,
-    );
+    if (!deckFiles.length || turnDirection) return;
+    const target =
+      (activeDeckIndex + direction + deckFiles.length) % deckFiles.length;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      setDeckIndex(target);
+      return;
+    }
+    setTurnDirection(direction);
+    window.setTimeout(() => {
+      setDeckIndex(target);
+      setTurnDirection(null);
+    }, 760);
   };
   const shareFile = async (file: FileItem) => {
     const url = new URL(
@@ -661,7 +686,7 @@ export default function ArchiveWorkspace({
               <span>RAK GALILEA</span>
               <ChevronRight size={12} />
               <strong>{browseArchive ? category === "worship" ? "Berkas Ibadah" : "Foto & Video" : "Koleksi pilihan"}</strong>
-              {browseArchive && <><ChevronRight size={12} /><strong>{year} / Triwulan {quarter}</strong><ChevronRight size={12} /><strong>{sabbath ? formatSabbathTitle(sabbath) : "Sabat terbaru"}</strong></>}
+              {browseArchive && <><ChevronRight size={12} /><strong>{year} / Triwulan {quarter}</strong><ChevronRight size={12} /><strong>{sabbath ? sabbaths.find((item) => item.date === sabbath)?.formattedTitle || (isValidSabbathDate(sabbath) ? formatSabbathTitle(sabbath) : sabbath) : "Sabat terbaru"}</strong></>}
             </div>
           )}
 
@@ -677,10 +702,22 @@ export default function ArchiveWorkspace({
               <div
                 className={styles.deckViewport}
                 tabIndex={0}
-                aria-label="Galeri tiga dimensi. Gunakan panah kiri dan kanan."
+                aria-label="Buku arsip interaktif. Gunakan panah kiri dan kanan untuk membalik halaman."
                 onKeyDown={(event) => {
                   if (event.key === "ArrowLeft") moveDeck(-1);
                   if (event.key === "ArrowRight") moveDeck(1);
+                }}
+                onPointerDown={(event) => {
+                  swipeStart.current = event.clientX;
+                }}
+                onPointerUp={(event) => {
+                  if (swipeStart.current === null) return;
+                  const distance = event.clientX - swipeStart.current;
+                  swipeStart.current = null;
+                  if (Math.abs(distance) > 45) moveDeck(distance > 0 ? -1 : 1);
+                }}
+                onPointerCancel={() => {
+                  swipeStart.current = null;
                 }}
               >
                 <button
@@ -691,51 +728,81 @@ export default function ArchiveWorkspace({
                 >
                   <ChevronLeft size={22} />
                 </button>
-                <div className={styles.deckStage}>
+                <div className={styles.deckStage} data-book-state={bookOpened ? "open" : "closed"}>
                   {deckFiles.map((file, index) => {
-                    const offset = index - activeDeckIndex;
-                    const distance = Math.abs(offset);
+                    const rawOffset = index - activeDeckIndex;
+                    if (Math.abs(rawOffset) > 3 || rawOffset === 0) return null;
                     return (
                       <button
                         type="button"
                         key={file.id}
-                        className={`${styles.deckCard} ${index === activeDeckIndex ? styles.deckCardActive : ""}`}
-                        style={
-                          {
-                            "--deck-shift": `${offset * 39}%`,
-                            "--deck-depth": `${distance * -80}px`,
-                            "--deck-tilt": `${offset * -16}deg`,
-                            "--deck-scale": Math.max(0.68, 1 - distance * 0.065),
-                            "--deck-opacity": distance > 3 ? 0 : 1,
-                            zIndex: 20 - distance,
-                          } as CSSProperties
-                        }
-                        aria-label={`${index === activeDeckIndex ? "Buka" : "Pilih"} ${file.name}`}
-                        aria-pressed={index === activeDeckIndex}
-                        onClick={() =>
-                          index === activeDeckIndex
-                            ? setViewerId(file.id)
-                            : setDeckIndex(index)
-                        }
+                        className={styles.bookPreview}
+                        style={{
+                          "--preview-shift": `${rawOffset * 74}px`,
+                          "--preview-tilt": `${rawOffset * -5}deg`,
+                          "--preview-depth": `${Math.abs(rawOffset) * -34}px`,
+                          zIndex: 8 - Math.abs(rawOffset),
+                        } as CSSProperties}
+                        onClick={() => moveDeck(rawOffset < 0 ? -1 : 1)}
+                        aria-label={`${rawOffset < 0 ? "Halaman sebelumnya" : "Halaman berikutnya"}: ${file.name}`}
+                        tabIndex={-1}
                       >
-                        <span className={styles.bookSpine} aria-hidden="true" />
-                        <span className={styles.bookFace}>
-                          <span className={styles.bookSeries}>GALILEA / ARSIP DIGITAL</span>
-                          <span className={styles.bookMedia}><Thumbnail file={file} onRatio={onRatio} /></span>
-                          <span className={styles.bookImprint}>
-                            <small>{file.sabbathTitle}</small>
-                            <strong>{file.name}</strong>
-                            <i>{fileKind(file)} · {String(index + 1).padStart(2, "0")}</i>
-                          </span>
-                        </span>
-                        {file.fileType === "video" && (
-                          <span className={styles.deckPlay}>
-                            <Play size={18} fill="currentColor" />
-                          </span>
-                        )}
+                        <Thumbnail file={file} onRatio={onRatio} />
                       </button>
                     );
                   })}
+
+                  <div className={styles.bookFrame}>
+                    <span className={styles.pageBlock} aria-hidden="true" />
+                    <button
+                      type="button"
+                      className={styles.journalPage}
+                      onClick={() => setViewerId(activeDeckFile.id)}
+                      aria-label={`Buka ${activeDeckFile.name}`}
+                    >
+                      <span className={styles.journalMedia}>
+                        <Thumbnail
+                          file={turnDirection === 1 ? deckFiles[nextDeckIndex] : activeDeckFile}
+                          onRatio={onRatio}
+                        />
+                      </span>
+                      <span className={styles.journalMeta}>
+                        <small>{activeDeckFile.sabbathTitle}</small>
+                        <strong>{activeDeckFile.name}</strong>
+                        <i>{fileKind(activeDeckFile)} · GALILEA</i>
+                      </span>
+                    </button>
+
+                    {turnDirection && (
+                      <span
+                        className={`${styles.turningLeaf} ${turnDirection === 1 ? styles.turningNext : styles.turningPrevious}`}
+                        aria-hidden="true"
+                      >
+                        <span className={`${styles.leafSide} ${styles.leafFront}`}>
+                          <span className={styles.journalMedia}>
+                            <Thumbnail
+                              file={turnDirection === 1 ? activeDeckFile : deckFiles[previousDeckIndex]}
+                            />
+                          </span>
+                        </span>
+                        <span className={`${styles.leafSide} ${styles.leafBack}`}>
+                          <span className={styles.journalMedia}>
+                            <Thumbnail
+                              file={turnDirection === 1 ? deckFiles[nextDeckIndex] : activeDeckFile}
+                            />
+                          </span>
+                        </span>
+                      </span>
+                    )}
+
+                    <span className={styles.bookHinge} aria-hidden="true" />
+                    <span className={`${styles.openingCover} ${bookOpened ? styles.openingCoverOpen : ""}`} aria-hidden="true">
+                      <span className={styles.coverRule}>GMAHK GALILEA</span>
+                      <Image src="/adventist-logo.svg" alt="" width={44} height={44} />
+                      <strong>Jurnal<br />Kehidupan Jemaat</strong>
+                      <small>ARSIP DIGITAL · {year}</small>
+                    </span>
+                  </div>
                 </div>
                 <button
                   type="button"
