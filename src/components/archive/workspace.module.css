@@ -716,6 +716,7 @@
   background: #e8e3d8;
   backface-visibility: hidden;
 }
+.leafSide .journalMedia { height: 100%; }
 .leafBack { transform: rotateY(180deg); }
 .turningNext { animation: turnNext 0.76s cubic-bezier(0.3, 0.7, 0.15, 1) forwards; }
 .turningPrevious { animation: turnPrevious 0.76s cubic-bezier(0.3, 0.7, 0.15, 1) forwards; }
