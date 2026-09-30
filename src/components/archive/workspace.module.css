@@ -248,6 +248,34 @@
   padding-bottom: 5px;
   border-bottom: 1px solid #515151;
 }
+.heroLinks {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 24px;
+  margin-top: 22px;
+}
+.heroLinks .heroLink {
+  margin-top: 0;
+}
+.heroUpload {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 42px;
+  padding: 0 17px;
+  border: 1px solid #e8e8e8;
+  border-radius: 4px;
+  color: #090909;
+  background: #eee;
+  font-size: 13px;
+  box-shadow: 0 10px 30px #0008;
+  transition: transform 0.2s, background 0.2s;
+}
+.heroUpload:hover {
+  background: #fff;
+  transform: translateY(-2px);
+}
 .heroLink svg {
   transition: transform 0.25s;
 }
@@ -266,6 +294,50 @@
   scroll-margin-top: 88px;
   padding: 32px 36px 0;
   border-top: 1px solid var(--line);
+}
+.guideRail {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0;
+  margin: -32px -36px 28px;
+  border-bottom: 1px solid #292929;
+  background: #0b0b0b;
+}
+.guideRail > div,
+.guideRail > a {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 92px;
+  padding: 18px 36px;
+}
+.guideRail > a {
+  border-left: 1px solid #292929;
+  transition: background 0.25s;
+}
+.guideRail > a:hover { background: #191919; }
+.guideNumber {
+  color: #858585;
+  font-size: 9px;
+  letter-spacing: 1.5px;
+}
+.guideRail p {
+  margin: 8px 0 0;
+  color: #c9c9c9;
+  font-size: 14px;
+}
+.guideRail strong {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 6px;
+  font-size: 16px;
+  font-weight: 400;
+}
+.guideRail small {
+  margin-top: 4px;
+  font-size: 11px;
+  color: #969696;
 }
 .collectionHeading {
   display: flex;
@@ -405,6 +477,48 @@
   padding-bottom: 24px;
   border-bottom: 1px solid #262626;
 }
+.browseHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 2px 0 13px;
+  color: #dedede;
+}
+.browseHeader > div,
+.browseHeader button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.browseHeader span { font-size: 10px; letter-spacing: 1.4px; }
+.browseHeader small { color: #858585; font-size: 12px; letter-spacing: 0; }
+.browseHeader button {
+  color: #d6d6d6;
+  font-size: 12px;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+.homeFilters {
+  margin-bottom: 0;
+  padding: 16px;
+  gap: 12px;
+  border: 1px solid #303030;
+  border-radius: 7px;
+  background: #101010;
+}
+.homeFilters select { background: #080808; }
+.folderPath {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  color: #818181;
+  font-size: 11px;
+}
+.folderPath span { font-size: 9px; letter-spacing: 1px; }
+.folderPath strong { color: #c9c9c9; font-weight: 400; }
 .archiveFilters label {
   font-size: 12px;
   color: #999;
@@ -424,14 +538,14 @@
 }
 .coverflow {
   position: relative;
-  margin: 4px 0 32px;
-  padding: 18px 22px 20px;
+  margin: 0 0 32px;
+  padding: 20px 22px 22px;
   overflow: hidden;
-  border: 1px solid #2a2a2a;
-  border-radius: 12px;
+  border: 1px solid #323232;
+  border-radius: 6px;
   background:
-    radial-gradient(circle at 50% 40%, #292929 0, #101010 38%, #090909 72%),
-    #090909;
+    radial-gradient(ellipse at 50% 44%, #323232 0, #151515 45%, #080808 82%),
+    #080808;
   box-shadow:
     inset 0 1px #ffffff0a,
     0 30px 70px #0008;
@@ -441,7 +555,7 @@
   position: absolute;
   left: 20%;
   right: 20%;
-  bottom: 112px;
+  bottom: 126px;
   height: 28px;
   border-radius: 50%;
   background: #000;
@@ -466,7 +580,7 @@
 .deckViewport {
   position: relative;
   z-index: 2;
-  height: 360px;
+  height: 390px;
   margin-top: 8px;
   perspective: 1350px;
   outline: none;
@@ -484,16 +598,16 @@
   position: absolute;
   left: 50%;
   top: 50%;
-  width: min(44vw, 430px);
-  max-height: 310px;
-  min-width: 160px;
-  overflow: hidden;
-  border: 1px solid #ffffff30;
-  border-radius: 12px;
-  background: #111;
+  width: 246px;
+  height: 332px;
+  padding: 0;
+  border: 0;
+  border-radius: 2px 7px 7px 2px;
+  background: #ecebe5;
   box-shadow:
-    0 16px 45px #000c,
-    0 0 0 1px #0008;
+    5px 5px 0 #d2d0ca,
+    8px 7px 0 #77746f,
+    12px 20px 36px #000d;
   opacity: var(--deck-opacity);
   transform: translate(-50%, -50%) translateX(var(--deck-shift))
     translateZ(var(--deck-depth)) rotateY(var(--deck-tilt))
@@ -508,18 +622,76 @@
 }
 .deckCard img {
   object-fit: contain;
-  background: #080808;
+  background: #111;
 }
 .deckCardActive {
-  border-color: #ffffff95;
   box-shadow:
-    0 25px 70px #000,
-    0 0 0 1px #ffffff18,
-    inset 0 0 30px #ffffff08;
+    5px 5px 0 #d2d0ca,
+    8px 7px 0 #77746f,
+    18px 26px 65px #000;
 }
 .deckCardActive:hover {
   transform: translate(-50%, -50%) translateX(var(--deck-shift))
     translateZ(20px) rotateY(var(--deck-tilt)) scale(1.015);
+}
+.bookSpine {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 16px;
+  z-index: 4;
+  border-right: 1px solid #ffffff3b;
+  background: linear-gradient(90deg, #050505, #303030 25%, #101010 65%, #ffffff32 90%, #111);
+  box-shadow: 3px 0 12px #0009;
+}
+.bookFace {
+  display: flex;
+  flex-direction: column;
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  padding: 15px 13px 12px 25px;
+  background: #0c0c0c;
+  color: #f4f4f4;
+  text-align: left;
+}
+.bookSeries {
+  flex: none;
+  padding-bottom: 9px;
+  border-bottom: 1px solid #ffffff45;
+  color: #b5b5b5;
+  font-size: 8px;
+  letter-spacing: 1.25px;
+}
+.bookMedia {
+  position: relative;
+  display: block;
+  flex: 1;
+  min-height: 0;
+  margin-top: 10px;
+  overflow: hidden;
+  background: #161616;
+}
+.bookMedia img { object-fit: contain; }
+.bookImprint {
+  display: flex;
+  flex-direction: column;
+  flex: none;
+  min-height: 78px;
+  padding-top: 12px;
+  text-align: left;
+}
+.bookImprint small,
+.bookImprint i { color: #999; font-size: 9px; font-style: normal; }
+.bookImprint strong {
+  display: block;
+  overflow: hidden;
+  max-width: 100%;
+  margin: 5px 0 4px;
+  color: white;
+  font-size: 13px;
+  font-weight: 400;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 .deckPlay {
   position: absolute;
@@ -1083,6 +1255,7 @@
   .collection {
     padding-inline: 26px;
   }
+  .guideRail { margin-inline: -26px; }
   .hero h1 {
     font-size: 36px;
   }
@@ -1167,15 +1340,16 @@
     scroll-margin-top: 145px;
     padding-top: 25px;
   }
+  .guideRail { margin-top: -25px; }
   .archiveFilters {
     grid-template-columns: 1fr 1fr;
   }
   .deckViewport {
-    height: 330px;
+    height: 345px;
   }
   .deckCard {
-    width: min(56vw, 390px);
-    max-height: 285px;
+    width: 225px;
+    height: 305px;
   }
   .detail {
     top: 140px;
@@ -1224,8 +1398,10 @@
     font-size: 9px;
   }
   .heroLink {
-    margin-top: 22px;
+    margin-top: 0;
   }
+  .heroLinks { gap: 16px; margin-top: 20px; }
+  .heroUpload { min-height: 39px; padding-inline: 12px; font-size: 12px; }
   .breadcrumb {
     font-size: 11px;
     margin-bottom: 34px;
@@ -1234,6 +1410,15 @@
     padding: 24px 16px 0;
     scroll-margin-top: 136px;
   }
+  .guideRail {
+    grid-template-columns: 1fr;
+    margin: -24px -16px 23px;
+  }
+  .guideRail > div,
+  .guideRail > a { min-height: 67px; padding: 13px 18px; }
+  .guideRail > a { border-left: 0; border-top: 1px solid #292929; }
+  .guideRail p { font-size: 12px; }
+  .guideRail strong { font-size: 14px; }
   .collectionHeading {
     margin-bottom: 20px;
     gap: 12px;
@@ -1280,6 +1465,16 @@
     display: none;
     gap: 14px 12px;
   }
+  .browseHeader small { display: none; }
+  .homeFilters {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    padding: 12px;
+    gap: 10px;
+  }
+  .homeFilters label { font-size: 11px; }
+  .homeFilters select { height: 39px; margin-top: 5px; font-size: 12px; padding-inline: 6px; }
+  .folderPath { gap: 5px; font-size: 10px; }
   .coverflow {
     margin-bottom: 24px;
     padding: 15px 12px 16px;
@@ -1291,18 +1486,23 @@
     bottom: 154px;
   }
   .deckViewport {
-    height: 278px;
+    height: 302px;
     margin-top: 4px;
   }
   .deckStage {
     inset-inline: 28px;
   }
   .deckCard {
-    width: min(70vw, 270px);
-    min-width: 126px;
-    max-height: 238px;
-    border-radius: 9px;
+    width: min(56vw, 204px);
+    height: 268px;
+    border-radius: 2px 6px 6px 2px;
   }
+  .bookFace { padding: 11px 9px 8px 20px; }
+  .bookSpine { width: 12px; }
+  .bookSeries { font-size: 6px; padding-bottom: 7px; }
+  .bookMedia { margin-top: 7px; }
+  .bookImprint { min-height: 66px; padding-top: 9px; }
+  .bookImprint strong { font-size: 11px; }
   .deckArrow {
     width: 36px;
     height: 48px;

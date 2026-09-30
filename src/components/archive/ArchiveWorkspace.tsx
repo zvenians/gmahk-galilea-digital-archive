@@ -37,7 +37,9 @@ import {
 } from "lucide-react";
 import type { ArchiveCategory, FileItem, SabbathInfo } from "@/lib/types";
 import {
+  formatSabbathTitle,
   getNearestSabbath,
+  getSabbathsInQuarter,
   isValidSabbathDate,
   parseSabbathDetails,
 } from "@/lib/sabbath";
@@ -138,8 +140,11 @@ export default function ArchiveWorkspace({
   const [year, setYear] = useState(initial.year);
   const [quarter, setQuarter] = useState(initial.quarter);
   const [sabbath, setSabbath] = useState(initialSabbath);
+  const [browseArchive, setBrowseArchive] = useState(mode === "archive");
   const [years, setYears] = useState([initial.year, initial.year - 1]);
-  const [sabbaths, setSabbaths] = useState<SabbathInfo[]>([]);
+  const [sabbaths, setSabbaths] = useState<SabbathInfo[]>(
+    getSabbathsInQuarter(initial.year, initial.quarter),
+  );
   const [files, setFiles] = useState<FileItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -167,7 +172,7 @@ export default function ArchiveWorkspace({
     });
     if (sabbath) params.set("sabbath", sabbath);
     const url =
-      mode === "selection"
+      mode === "selection" && !browseArchive
         ? "/api/archive/random?count=12"
         : `/api/archive/tree?${params}`;
     fetch(url, { signal: controller.signal })
@@ -179,12 +184,14 @@ export default function ArchiveWorkspace({
       })
       .then((json) => {
         setError(false);
-        if (mode === "selection") {
+        if (mode === "selection" && !browseArchive) {
           const selectionFiles = json.data || [];
           setFiles(selectionFiles);
           setDeckIndex(Math.max(0, Math.floor((selectionFiles.length - 1) / 2)));
         } else {
-          setFiles(json.data.files || []);
+          const archiveFiles = json.data.files || [];
+          setFiles(archiveFiles);
+          setDeckIndex(Math.max(0, Math.floor((Math.min(9, archiveFiles.length) - 1) / 2)));
           setSabbaths(json.data.sabbaths || []);
           if (json.data.availableYears?.length)
             setYears(json.data.availableYears);
@@ -201,7 +208,23 @@ export default function ArchiveWorkspace({
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [mode, year, quarter, category, sabbath, retry]);
+  }, [mode, browseArchive, year, quarter, category, sabbath, retry]);
+
+  useEffect(() => {
+    if (mode !== "selection" || browseArchive) return;
+    const controller = new AbortController();
+    fetch(`/api/archive/tree?year=${year}&quarter=${quarter}&category=${category}`, {
+      signal: controller.signal,
+    })
+      .then((response) => response.json())
+      .then((json) => {
+        if (!json.success) return;
+        if (json.data.availableYears?.length) setYears(json.data.availableYears);
+        if (!browseArchive) setSabbaths(json.data.sabbaths || []);
+      })
+      .catch(() => {});
+    return () => controller.abort();
+  }, [mode, year, quarter, category, browseArchive]);
 
   useEffect(() => {
     const element = galleryRef.current;
@@ -308,8 +331,20 @@ export default function ArchiveWorkspace({
   const changeArchive = (update: () => void) => {
     setLoading(true);
     setSabbath("");
+    setBrowseArchive(true);
     resetSelection();
     update();
+  };
+  const restoreSelection = () => {
+    setLoading(true);
+    setBrowseArchive(false);
+    setSabbath("");
+    setCategory("documentation");
+    setYear(initial.year);
+    setQuarter(initial.quarter);
+    setSearch("");
+    setFilter("all");
+    resetSelection();
   };
 
   function moveDepth(event: PointerEvent<HTMLElement>) {
@@ -457,9 +492,14 @@ export default function ArchiveWorkspace({
               <br />
               Setiap momen, tersimpan untuk dikenang.
             </p>
-            <a className={styles.heroLink} href="#koleksi">
-              Jelajahi koleksi <ArrowRight size={15} />
-            </a>
+            <div className={styles.heroLinks}>
+              <a className={styles.heroLink} href="#koleksi">
+                Jelajahi koleksi <ArrowRight size={15} />
+              </a>
+              <Link className={styles.heroUpload} href="/upload">
+                <UploadCloud size={16} /> Unggah media
+              </Link>
+            </div>
           </div>
           <span className={styles.heroEdition}>
             GALILEA / DIGITAL COLLECTION
@@ -467,6 +507,19 @@ export default function ArchiveWorkspace({
         </section>
 
         <section id="koleksi" className={styles.collection}>
+          {mode === "selection" && (
+            <div className={styles.guideRail}>
+              <div>
+                <span className={styles.guideNumber}>01 / LIHAT & UNDUH</span>
+                <p>Pilih folder dan tanggal, buka media, lalu unduh atau bagikan.</p>
+              </div>
+              <Link href="/upload">
+                <span className={styles.guideNumber}>02 / TAMBAHKAN ARSIP</span>
+                <strong>Unggah foto, video, atau dokumen <ArrowRight size={17} /></strong>
+                <small>Masuk sebagai pengurus untuk mengunggah.</small>
+              </Link>
+            </div>
+          )}
           <div className={styles.collectionHeading}>
             <div>
               <p className={styles.eyebrow}>
@@ -476,7 +529,9 @@ export default function ArchiveWorkspace({
               </p>
               <h2>
                 {mode === "selection"
-                  ? "Galeri & Dokumen"
+                  ? browseArchive
+                    ? category === "worship" ? "Berkas Ibadah" : "Arsip Sabat"
+                    : "Galeri & Dokumen"
                   : category === "worship"
                     ? "Berkas Ibadah"
                     : "Arsip Sabat"}
@@ -504,9 +559,23 @@ export default function ArchiveWorkspace({
             )}
           </div>
 
-          {mode === "archive" && (
+          {(mode === "archive" || mode === "selection") && (
+            <div className={styles.browseHeader}>
+              <div>
+                <FolderOpen size={16} />
+                <span>JELAJAH FOLDER</span>
+                <small>Temukan arsip berdasarkan waktu ibadah</small>
+              </div>
+              {mode === "selection" && browseArchive && (
+                <button type="button" onClick={restoreSelection}>
+                  <RefreshCw size={14} /> Kembali ke pilihan
+                </button>
+              )}
+            </div>
+          )}
+          {(mode === "archive" || mode === "selection") && (
             <div
-              className={`${styles.archiveFilters} ${filtersOpen ? styles.filtersExpanded : ""}`}
+              className={`${styles.archiveFilters} ${mode === "selection" ? styles.homeFilters : ""} ${filtersOpen ? styles.filtersExpanded : ""}`}
             >
               <label>
                 Koleksi
@@ -529,7 +598,11 @@ export default function ArchiveWorkspace({
                   aria-label="Tahun"
                   value={year}
                   onChange={(event) =>
-                    changeArchive(() => setYear(Number(event.target.value)))
+                    changeArchive(() => {
+                      const nextYear = Number(event.target.value);
+                      setYear(nextYear);
+                      setSabbaths(getSabbathsInQuarter(nextYear, quarter));
+                    })
                   }
                 >
                   {Array.from(new Set([...years, year]))
@@ -545,7 +618,11 @@ export default function ArchiveWorkspace({
                   aria-label="Triwulan"
                   value={quarter}
                   onChange={(event) =>
-                    changeArchive(() => setQuarter(Number(event.target.value)))
+                    changeArchive(() => {
+                      const nextQuarter = Number(event.target.value);
+                      setQuarter(nextQuarter);
+                      setSabbaths(getSabbathsInQuarter(year, nextQuarter));
+                    })
                   }
                 >
                   {[1, 2, 3, 4].map((value) => (
@@ -562,11 +639,12 @@ export default function ArchiveWorkspace({
                   value={sabbath}
                   onChange={(event) => {
                     setLoading(true);
+                    setBrowseArchive(true);
                     resetSelection();
                     setSabbath(event.target.value);
                   }}
                 >
-                  <option value="">Sabat terbaru</option>
+                  <option value="">{browseArchive || mode === "archive" ? "Sabat terbaru" : "Pilih tanggal"}</option>
                   {sabbaths.map((item) => (
                     <option key={item.date} value={item.date}>
                       {item.formattedTitle}
@@ -578,10 +656,19 @@ export default function ArchiveWorkspace({
             </div>
           )}
 
+          {mode === "selection" && (
+            <div className={styles.folderPath} aria-live="polite">
+              <span>RAK GALILEA</span>
+              <ChevronRight size={12} />
+              <strong>{browseArchive ? category === "worship" ? "Berkas Ibadah" : "Foto & Video" : "Koleksi pilihan"}</strong>
+              {browseArchive && <><ChevronRight size={12} /><strong>{year} / Triwulan {quarter}</strong><ChevronRight size={12} /><strong>{sabbath ? formatSabbathTitle(sabbath) : "Sabat terbaru"}</strong></>}
+            </div>
+          )}
+
           {mode === "selection" && !loading && !error && activeDeckFile && (
             <section className={styles.coverflow} aria-label="Sorotan koleksi">
               <div className={styles.coverflowHeading}>
-                <span>SOROTAN KOLEKSI</span>
+                <span>{browseArchive ? "ISI FOLDER" : "BUKU PILIHAN GALILEA"}</span>
                 <span>
                   {String(activeDeckIndex + 1).padStart(2, "0")} /{" "}
                   {String(deckFiles.length).padStart(2, "0")}
@@ -615,13 +702,12 @@ export default function ArchiveWorkspace({
                         className={`${styles.deckCard} ${index === activeDeckIndex ? styles.deckCardActive : ""}`}
                         style={
                           {
-                            "--deck-shift": `${offset * 29}%`,
-                            "--deck-depth": `${distance * -72}px`,
-                            "--deck-tilt": `${offset * -4.5}deg`,
-                            "--deck-scale": Math.max(0.72, 1 - distance * 0.07),
-                            "--deck-opacity": distance > 4 ? 0 : 1,
+                            "--deck-shift": `${offset * 39}%`,
+                            "--deck-depth": `${distance * -80}px`,
+                            "--deck-tilt": `${offset * -16}deg`,
+                            "--deck-scale": Math.max(0.68, 1 - distance * 0.065),
+                            "--deck-opacity": distance > 3 ? 0 : 1,
                             zIndex: 20 - distance,
-                            aspectRatio: ratioFor(file),
                           } as CSSProperties
                         }
                         aria-label={`${index === activeDeckIndex ? "Buka" : "Pilih"} ${file.name}`}
@@ -632,7 +718,16 @@ export default function ArchiveWorkspace({
                             : setDeckIndex(index)
                         }
                       >
-                        <Thumbnail file={file} onRatio={onRatio} />
+                        <span className={styles.bookSpine} aria-hidden="true" />
+                        <span className={styles.bookFace}>
+                          <span className={styles.bookSeries}>GALILEA / ARSIP DIGITAL</span>
+                          <span className={styles.bookMedia}><Thumbnail file={file} onRatio={onRatio} /></span>
+                          <span className={styles.bookImprint}>
+                            <small>{file.sabbathTitle}</small>
+                            <strong>{file.name}</strong>
+                            <i>{fileKind(file)} · {String(index + 1).padStart(2, "0")}</i>
+                          </span>
+                        </span>
                         {file.fileType === "video" && (
                           <span className={styles.deckPlay}>
                             <Play size={18} fill="currentColor" />
