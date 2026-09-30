@@ -75,7 +75,7 @@ export async function GET(request: NextRequest) {
   if (request.nextUrl.searchParams.get('action') === 'start') {
     const authUrl = getOauthClient().generateAuthUrl({
       access_type: 'offline',
-      prompt: 'consent',
+      prompt: 'consent select_account',
       include_granted_scopes: true,
       scope: [DRIVE_SCOPE],
     });
@@ -119,21 +119,43 @@ export async function POST(request: NextRequest) {
 
     const { tokens } = await getOauthClient().getToken(code);
     if (!tokens.refresh_token) {
-      return page('<h1>Refresh token tidak diterbitkan</h1><p>Cabut akses aplikasi lalu ulangi proses dengan persetujuan penuh.</p>');
+      console.warn('[Drive OAuth reconnect] Google exchanged the code without issuing a refresh token.');
+      return page('<h1>Belum ada token Drive</h1><p>Google menerima kode, tetapi tidak mengirim refresh token. Pilih akun pemilik arsip saat mengulang izin dan setujui akses Drive. Jangan gunakan access token atau token lama untuk Vercel.</p><a href="/api/drive-oauth">Ulangi izin Google</a>', '', 502);
     }
 
+    console.info('[Drive OAuth reconnect] Refresh token issued.');
     const token = escapeHtml(tokens.refresh_token);
     return page(
       `<h1>Token Drive siap</h1>
-       <p>Salin token secara aman lalu ganti <code>GOOGLE_DRIVE_REFRESH_TOKEN</code> di Vercel.</p>
+       <p>Ini <strong>refresh token baru</strong> untuk <code>GOOGLE_DRIVE_REFRESH_TOKEN</code> di Vercel, bukan access token atau alamat localhost.</p>
        <label for="refreshToken">Refresh token</label>
-       <input id="refreshToken" type="password" value="${token}" readonly />
+       <input id="refreshToken" type="password" value="${token}" readonly autocomplete="off" />
        <button id="copyToken" type="button">Salin token</button>
+       <button id="revealToken" type="button">Tampilkan token</button>
        <p id="status" aria-live="polite"></p>`,
       `document.getElementById('copyToken').addEventListener('click', async () => {
-         const value = document.getElementById('refreshToken').value;
-         await navigator.clipboard.writeText(value);
-         document.getElementById('status').textContent = 'Token tersalin.';
+         const input = document.getElementById('refreshToken');
+         const status = document.getElementById('status');
+         try {
+           await navigator.clipboard.writeText(input.value);
+           status.textContent = 'Refresh token tersalin. Tempel hanya di Vercel.';
+         } catch {
+           input.type = 'text';
+           input.focus();
+           input.select();
+           let copied = false;
+           try { copied = document.execCommand('copy'); } catch {}
+           status.textContent = copied
+             ? 'Refresh token tersalin. Tempel hanya di Vercel.'
+             : 'Salin manual isi kolom Refresh token yang dipilih, lalu tempel di Vercel.';
+           if (copied) input.type = 'password';
+         }
+       });
+       document.getElementById('revealToken').addEventListener('click', () => {
+         const input = document.getElementById('refreshToken');
+         const revealed = input.type === 'password';
+         input.type = revealed ? 'text' : 'password';
+         document.getElementById('revealToken').textContent = revealed ? 'Sembunyikan token' : 'Tampilkan token';
        });`
     );
   } catch (error) {
