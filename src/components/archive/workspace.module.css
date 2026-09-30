@@ -422,6 +422,206 @@
   border: 1px solid #303030;
   border-radius: 5px;
 }
+.coverflow {
+  position: relative;
+  margin: 4px 0 32px;
+  padding: 18px 22px 20px;
+  overflow: hidden;
+  border: 1px solid #2a2a2a;
+  border-radius: 12px;
+  background:
+    radial-gradient(circle at 50% 40%, #292929 0, #101010 38%, #090909 72%),
+    #090909;
+  box-shadow:
+    inset 0 1px #ffffff0a,
+    0 30px 70px #0008;
+}
+.coverflow::after {
+  content: "";
+  position: absolute;
+  left: 20%;
+  right: 20%;
+  bottom: 112px;
+  height: 28px;
+  border-radius: 50%;
+  background: #000;
+  filter: blur(20px);
+  opacity: 0.75;
+  pointer-events: none;
+}
+.coverflowHeading {
+  position: relative;
+  z-index: 35;
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  color: #929292;
+  font-size: 9px;
+  letter-spacing: 1.7px;
+}
+.coverflowHeading span:last-child {
+  letter-spacing: 1px;
+  color: #d0d0d0;
+}
+.deckViewport {
+  position: relative;
+  z-index: 2;
+  height: 360px;
+  margin-top: 8px;
+  perspective: 1350px;
+  outline: none;
+}
+.deckViewport:focus-visible {
+  outline: 1px solid #ffffff70;
+  outline-offset: 4px;
+}
+.deckStage {
+  position: absolute;
+  inset: 0 54px;
+  transform-style: preserve-3d;
+}
+.deckCard {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: min(44vw, 430px);
+  max-height: 310px;
+  min-width: 160px;
+  overflow: hidden;
+  border: 1px solid #ffffff30;
+  border-radius: 12px;
+  background: #111;
+  box-shadow:
+    0 16px 45px #000c,
+    0 0 0 1px #0008;
+  opacity: var(--deck-opacity);
+  transform: translate(-50%, -50%) translateX(var(--deck-shift))
+    translateZ(var(--deck-depth)) rotateY(var(--deck-tilt))
+    scale(var(--deck-scale));
+  transform-style: preserve-3d;
+  transition:
+    transform 0.62s cubic-bezier(0.2, 0.78, 0.2, 1),
+    opacity 0.36s ease,
+    border-color 0.3s,
+    box-shadow 0.3s;
+  will-change: transform;
+}
+.deckCard img {
+  object-fit: contain;
+  background: #080808;
+}
+.deckCardActive {
+  border-color: #ffffff95;
+  box-shadow:
+    0 25px 70px #000,
+    0 0 0 1px #ffffff18,
+    inset 0 0 30px #ffffff08;
+}
+.deckCardActive:hover {
+  transform: translate(-50%, -50%) translateX(var(--deck-shift))
+    translateZ(20px) rotateY(var(--deck-tilt)) scale(1.015);
+}
+.deckPlay {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border: 1px solid #ffffff80;
+  border-radius: 50%;
+  color: white;
+  background: #0009;
+  box-shadow: 0 8px 24px #0008;
+}
+.deckArrow {
+  position: absolute;
+  top: 50%;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 60px;
+  color: #bbb;
+  border: 1px solid #ffffff1c;
+  border-radius: 8px;
+  background: #080808b8;
+  transform: translateY(-50%);
+  transition:
+    color 0.2s,
+    background 0.2s,
+    transform 0.2s;
+  backdrop-filter: blur(10px);
+}
+.deckArrow:hover {
+  color: #fff;
+  background: #252525e8;
+  transform: translateY(-50%) scale(1.04);
+}
+.deckArrowLeft {
+  left: 4px;
+}
+.deckArrowRight {
+  right: 4px;
+}
+.deckCaption {
+  position: relative;
+  z-index: 35;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 42px;
+  text-align: center;
+}
+.deckCaption strong {
+  max-width: min(90%, 560px);
+  overflow: hidden;
+  color: #f1f1f1;
+  font-size: 15px;
+  font-weight: 400;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.deckCaption span {
+  margin-top: 6px;
+  color: #858585;
+  font-size: 11px;
+}
+.deckActions {
+  position: relative;
+  z-index: 35;
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+.deckActions button,
+.deckActions a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 14px;
+  color: #dedede;
+  border: 1px solid #3b3b3b;
+  border-radius: 999px;
+  background: #151515;
+  font-size: 12px;
+  transition:
+    transform 0.2s,
+    color 0.2s,
+    background 0.2s,
+    border-color 0.2s;
+}
+.deckActions button:hover,
+.deckActions a:hover {
+  color: #080808;
+  border-color: #f2f2f2;
+  background: #f2f2f2;
+  transform: translateY(-2px);
+}
 .content {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -970,6 +1170,13 @@
   .archiveFilters {
     grid-template-columns: 1fr 1fr;
   }
+  .deckViewport {
+    height: 330px;
+  }
+  .deckCard {
+    width: min(56vw, 390px);
+    max-height: 285px;
+  }
   .detail {
     top: 140px;
     max-height: calc(100svh - 160px);
@@ -1072,6 +1279,50 @@
   .archiveFilters {
     display: none;
     gap: 14px 12px;
+  }
+  .coverflow {
+    margin-bottom: 24px;
+    padding: 15px 12px 16px;
+    border-radius: 9px;
+  }
+  .coverflow::after {
+    left: 10%;
+    right: 10%;
+    bottom: 154px;
+  }
+  .deckViewport {
+    height: 278px;
+    margin-top: 4px;
+  }
+  .deckStage {
+    inset-inline: 28px;
+  }
+  .deckCard {
+    width: min(70vw, 270px);
+    min-width: 126px;
+    max-height: 238px;
+    border-radius: 9px;
+  }
+  .deckArrow {
+    width: 36px;
+    height: 48px;
+  }
+  .deckArrowLeft {
+    left: -4px;
+  }
+  .deckArrowRight {
+    right: -4px;
+  }
+  .deckActions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    max-width: 290px;
+    margin-inline: auto;
+  }
+  .deckActions button,
+  .deckActions a {
+    width: 100%;
+    padding-inline: 10px;
   }
   .filtersExpanded {
     display: grid;

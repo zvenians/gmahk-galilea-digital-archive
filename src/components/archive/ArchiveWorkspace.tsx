@@ -17,6 +17,7 @@ import {
   ArrowRight,
   CalendarDays,
   Check,
+  ChevronLeft,
   ChevronRight,
   FileText,
   FolderOpen,
@@ -28,7 +29,9 @@ import {
   Play,
   RefreshCw,
   Search,
+  Share2,
   SlidersHorizontal,
+  UploadCloud,
   Video,
   X,
 } from "lucide-react";
@@ -147,6 +150,8 @@ export default function ArchiveWorkspace({
   const [view, setView] = useState<"grid" | "list">("grid");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [viewerId, setViewerId] = useState<string | null>(null);
+  const [deckIndex, setDeckIndex] = useState(0);
+  const [shareStatus, setShareStatus] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [ratios, setRatios] = useState<Record<string, number>>({});
   const [width, setWidth] = useState(900);
@@ -174,8 +179,11 @@ export default function ArchiveWorkspace({
       })
       .then((json) => {
         setError(false);
-        if (mode === "selection") setFiles(json.data || []);
-        else {
+        if (mode === "selection") {
+          const selectionFiles = json.data || [];
+          setFiles(selectionFiles);
+          setDeckIndex(Math.max(0, Math.floor((selectionFiles.length - 1) / 2)));
+        } else {
           setFiles(json.data.files || []);
           setSabbaths(json.data.sabbaths || []);
           if (json.data.availableYears?.length)
@@ -243,6 +251,9 @@ export default function ArchiveWorkspace({
     [files, filter, search, sort],
   );
   const selected = visibleFiles.find((file) => file.id === selectedId);
+  const deckFiles = visibleFiles.slice(0, 9);
+  const activeDeckIndex = Math.min(deckIndex, Math.max(0, deckFiles.length - 1));
+  const activeDeckFile = deckFiles[activeDeckIndex];
   const viewerIndex = visibleFiles.findIndex((file) => file.id === viewerId);
   const ratioFor = (file: FileItem) =>
     ratios[file.id] ||
@@ -255,6 +266,33 @@ export default function ArchiveWorkspace({
       ),
     [],
   );
+  const moveDeck = (direction: -1 | 1) => {
+    if (!deckFiles.length) return;
+    setDeckIndex(
+      (activeDeckIndex + direction + deckFiles.length) % deckFiles.length,
+    );
+  };
+  const shareFile = async (file: FileItem) => {
+    const url = new URL(
+      `/archive?category=${file.category}&sabbath=${file.sabbathDate}`,
+      window.location.origin,
+    ).toString();
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: file.name, url });
+        setShareStatus("Siap dibagikan");
+      } else {
+        await navigator.clipboard.writeText(url);
+        setShareStatus("Tautan disalin");
+      }
+      window.setTimeout(() => setShareStatus(""), 1800);
+    } catch (shareError) {
+      if ((shareError as Error).name !== "AbortError") {
+        setShareStatus("Bagikan melalui tampilan berkas");
+        setViewerId(file.id);
+      }
+    }
+  };
   const selectFile = (file: FileItem, element: HTMLElement) => {
     returnFocus.current = element;
     setSelectedId(file.id);
@@ -538,6 +576,118 @@ export default function ArchiveWorkspace({
                 </select>
               </label>
             </div>
+          )}
+
+          {mode === "selection" && !loading && !error && activeDeckFile && (
+            <section className={styles.coverflow} aria-label="Sorotan koleksi">
+              <div className={styles.coverflowHeading}>
+                <span>SOROTAN KOLEKSI</span>
+                <span>
+                  {String(activeDeckIndex + 1).padStart(2, "0")} /{" "}
+                  {String(deckFiles.length).padStart(2, "0")}
+                </span>
+              </div>
+              <div
+                className={styles.deckViewport}
+                tabIndex={0}
+                aria-label="Galeri tiga dimensi. Gunakan panah kiri dan kanan."
+                onKeyDown={(event) => {
+                  if (event.key === "ArrowLeft") moveDeck(-1);
+                  if (event.key === "ArrowRight") moveDeck(1);
+                }}
+              >
+                <button
+                  type="button"
+                  className={`${styles.deckArrow} ${styles.deckArrowLeft}`}
+                  onClick={() => moveDeck(-1)}
+                  aria-label="Media sebelumnya"
+                >
+                  <ChevronLeft size={22} />
+                </button>
+                <div className={styles.deckStage}>
+                  {deckFiles.map((file, index) => {
+                    const offset = index - activeDeckIndex;
+                    const distance = Math.abs(offset);
+                    return (
+                      <button
+                        type="button"
+                        key={file.id}
+                        className={`${styles.deckCard} ${index === activeDeckIndex ? styles.deckCardActive : ""}`}
+                        style={
+                          {
+                            "--deck-shift": `${offset * 29}%`,
+                            "--deck-depth": `${distance * -72}px`,
+                            "--deck-tilt": `${offset * -4.5}deg`,
+                            "--deck-scale": Math.max(0.72, 1 - distance * 0.07),
+                            "--deck-opacity": distance > 4 ? 0 : 1,
+                            zIndex: 20 - distance,
+                            aspectRatio: ratioFor(file),
+                          } as CSSProperties
+                        }
+                        aria-label={`${index === activeDeckIndex ? "Buka" : "Pilih"} ${file.name}`}
+                        aria-pressed={index === activeDeckIndex}
+                        onClick={() =>
+                          index === activeDeckIndex
+                            ? setViewerId(file.id)
+                            : setDeckIndex(index)
+                        }
+                      >
+                        <Thumbnail file={file} onRatio={onRatio} />
+                        {file.fileType === "video" && (
+                          <span className={styles.deckPlay}>
+                            <Play size={18} fill="currentColor" />
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+                <button
+                  type="button"
+                  className={`${styles.deckArrow} ${styles.deckArrowRight}`}
+                  onClick={() => moveDeck(1)}
+                  aria-label="Media berikutnya"
+                >
+                  <ChevronRight size={22} />
+                </button>
+              </div>
+              <div className={styles.deckCaption}>
+                <strong>{activeDeckFile.name}</strong>
+                <span>
+                  {fileKind(activeDeckFile)} / {activeDeckFile.sabbathTitle}
+                </span>
+              </div>
+              <div className={styles.deckActions}>
+                <button
+                  type="button"
+                  onClick={() => setViewerId(activeDeckFile.id)}
+                  aria-label={`Buka ${activeDeckFile.name}`}
+                >
+                  <Maximize2 size={17} />
+                  <span>Lihat</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void shareFile(activeDeckFile)}
+                  aria-label={`Bagikan ${activeDeckFile.name}`}
+                >
+                  <Share2 size={17} />
+                  <span>{shareStatus || "Bagikan"}</span>
+                </button>
+                <a
+                  href={`/api/archive/download?fileId=${encodeURIComponent(activeDeckFile.id)}`}
+                  download
+                  aria-label={`Unduh ${activeDeckFile.name}`}
+                >
+                  <ArrowDownToLine size={17} />
+                  <span>Unduh</span>
+                </a>
+                <Link href="/upload" aria-label="Unggah media baru">
+                  <UploadCloud size={17} />
+                  <span>Unggah</span>
+                </Link>
+              </div>
+            </section>
           )}
 
           <div className={styles.toolbar}>
