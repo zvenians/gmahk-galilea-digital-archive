@@ -661,7 +661,7 @@ export default function ArchiveWorkspace({
               <span>RAK GALILEA</span>
               <ChevronRight size={12} />
               <strong>{browseArchive ? category === "worship" ? "Berkas Ibadah" : "Foto & Video" : "Koleksi pilihan"}</strong>
-              {browseArchive && <><ChevronRight size={12} /><strong>{year} / Triwulan {quarter}</strong><ChevronRight size={12} /><strong>{sabbath ? formatSabbathTitle(sabbath) : "Sabat terbaru"}</strong></>}
+              {browseArchive && <><ChevronRight size={12} /><strong>{year} / Triwulan {quarter}</strong><ChevronRight size={12} /><strong>{sabbath ? sabbaths.find((item) => item.date === sabbath)?.formattedTitle || (isValidSabbathDate(sabbath) ? formatSabbathTitle(sabbath) : sabbath) : "Sabat terbaru"}</strong></>}
             </div>
           )}
 
