@@ -16,7 +16,6 @@ import {
 import { ArchiveCategory, SabbathInfo } from '@/lib/types';
 import { useToast } from '@/context/ToastContext';
 import { useAuth } from '@/context/AuthContext';
-import Navbar from '@/components/Navbar';
 
 interface QueueItem {
   id: string;
@@ -482,6 +481,7 @@ function UploadContent() {
   
   const overallProgress = totalFiles === 0 ? 0 : Math.round((queue.reduce((acc, curr) => acc + curr.progress, 0)) / totalFiles);
 
+  const [uiStep, setUiStep] = useState(1);
   const formatBytes = (bytes: number) => {
     if (bytes === 0) return '0 B';
     const k = 1024;
@@ -497,7 +497,6 @@ function UploadContent() {
   if (!user || role !== 'admin') {
     return (
       <main className="min-h-screen bg-[#050505] text-white">
-        <Navbar />
         <section className="min-h-screen flex items-center justify-center px-6">
           <div className="max-w-lg text-center border border-white/10 bg-white/[0.03] rounded-[2rem] p-10">
             <AlertCircle className="w-10 h-10 mx-auto mb-6 text-white/70" />
@@ -512,12 +511,10 @@ function UploadContent() {
   }
 
   return (
-    <main className="min-h-screen bg-[#050505] text-white">
-      <Navbar />
-
-      <div className="max-w-4xl mx-auto px-6 py-32">
-        <div className="flex items-center justify-between mb-8">
-          <h1 className="text-3xl font-medium tracking-tight">Pusat Unggahan</h1>
+    <main className="studio-upload min-h-screen text-white">
+      <div className="max-w-5xl mx-auto px-6 py-12 sm:py-20">
+        <div className="flex items-start justify-between mb-12 sm:mb-20">
+          <div><p className="studio-upload-kicker">GALILEA / KONTRIBUSI ARSIP</p><h1 className="studio-upload-title">Bagikan <em>ceritanya.</em></h1><p className="studio-upload-intro">Simpan dokumentasi dan berkas pelayanan agar dapat ditemukan kembali oleh jemaat.</p></div>
           <Link
             href="/archive"
             onClick={(e) => {
@@ -532,37 +529,39 @@ function UploadContent() {
           </Link>
         </div>
 
-        {/* Configuration Row */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
-          <div className="bg-white/5 border border-white/10 rounded-3xl p-6">
-            <h3 className="text-sm text-white/50 mb-3">Tujuan Penyimpanan</h3>
-            <div className="flex bg-black/40 rounded-full p-1 border border-white/5">
+        <div className="studio-upload-steps" aria-label="Langkah unggah">{['Tujuan', 'Sabat', 'File', 'Review'].map((label, index) => <span key={label} aria-current={uiStep === index + 1 ? 'step' : undefined}>0{index + 1} <b>{label}</b></span>)}</div>
+        <div className="mb-8">
+          <div className="studio-upload-section" hidden={uiStep !== 1}>
+            <h3><span>01</span> Tujuan penyimpanan</h3><p>Pilih jenis koleksi untuk berkas ini.</p>
+            <div className="studio-upload-options">
               <button
                 onClick={() => setCategory('documentation')}
                 disabled={uploadActive}
-                className={`flex-1 py-2 text-sm font-medium rounded-full transition-colors ${
-                  category === 'documentation' ? 'bg-white text-black' : 'text-white hover:bg-white/10'
+                className={`flex-1 py-3 text-sm transition-colors ${
+                  category === 'documentation' ? 'bg-white text-black' : 'text-white/60 hover:text-white'
                 }`}
               >
-                Dokumentasi
+                <ImageIcon className="w-6 h-6 mb-5" /> Dokumentasi
+                <small>Foto dan video kebersamaan jemaat.</small>
               </button>
               <button
                 onClick={() => setCategory('worship')}
                 disabled={uploadActive}
-                className={`flex-1 py-2 text-sm font-medium rounded-full transition-colors ${
-                  category === 'worship' ? 'bg-white text-black' : 'text-white hover:bg-white/10'
+                className={`flex-1 py-3 text-sm transition-colors ${
+                  category === 'worship' ? 'bg-white text-black' : 'text-white/60 hover:text-white'
                 }`}
               >
-                File Ibadah
+                <FileText className="w-6 h-6 mb-5" /> Berkas Ibadah
+                <small>Materi, laporan, dan dokumen pelayanan.</small>
               </button>
             </div>
           </div>
 
-          <div className="bg-white/5 border border-white/10 rounded-3xl p-6 relative">
-            <h3 className="text-sm text-white/50 mb-3">Pilih Hari Sabat</h3>
+          <div className="studio-upload-section relative" hidden={uiStep !== 2}>
+            <h3><span>02</span> Tanggal Sabat</h3><p>Tempatkan berkas pada Sabat yang tepat.</p>
             <button
               onClick={() => !uploadActive && setShowDatePicker(!showDatePicker)}
-              className="w-full bg-black/40 border border-white/5 rounded-2xl p-4 text-left flex justify-between items-center hover:bg-white/5 transition-colors"
+              className="w-full bg-[#22211f] border-b border-white/30 p-4 text-left flex justify-between items-center hover:bg-white/10 transition-colors"
             >
               <div>
                 <div className="text-sm font-medium text-white">
@@ -573,7 +572,7 @@ function UploadContent() {
             </button>
 
             {showDatePicker && (
-              <div className="absolute top-full left-0 right-0 mt-2 z-20 bg-[#111] border border-white/10 rounded-2xl overflow-hidden shadow-2xl max-h-60 overflow-y-auto">
+              <div className="absolute top-full left-0 right-0 mt-2 z-20 bg-[#22211f] border border-white/10 overflow-hidden shadow-2xl max-h-60 overflow-y-auto">
                 {sabbathList.map((sab) => (
                   <button
                     key={sab.date}
@@ -598,14 +597,19 @@ function UploadContent() {
           </div>
         </div>
 
-        {/* Dropzone */}
+        <div hidden={uiStep !== 3}>
+        <div className="studio-upload-section mb-5"><h3><span>03</span> Pilih file</h3><p>Seret ke area ini atau pilih dari perangkat.</p></div>
         {!uploadActive && (
           <div
             onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
             onDragLeave={() => setDragOver(false)}
             onDrop={handleDrop}
             onClick={() => fileInputRef.current?.click()}
-            className={`border-2 border-dashed rounded-3xl p-12 text-center cursor-pointer transition-colors ${
+            role="button"
+            tabIndex={0}
+            aria-label="Pilih berkas dari perangkat"
+            onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); fileInputRef.current?.click(); } }}
+            className={`studio-upload-drop border border-dashed p-12 text-center cursor-pointer transition-colors ${
               dragOver ? 'border-white bg-white/5' : 'border-white/20 hover:border-white/40 hover:bg-white/5'
             }`}
           >
@@ -617,17 +621,21 @@ function UploadContent() {
               onChange={handleFileSelect}
               className="hidden"
             />
-            <div className="w-16 h-16 rounded-full bg-white/10 mx-auto flex items-center justify-center mb-4">
+            <div className="w-16 h-16 border border-white/20 mx-auto flex items-center justify-center mb-4">
               <UploadIcon className="w-8 h-8 text-white" />
             </div>
-            <h3 className="text-lg font-medium text-white mb-2">Seret & Letakkan Berkas di Sini</h3>
+            <h3 className="text-lg font-medium text-white mb-2">Letakkan berkas di sini</h3>
             <p className="text-white/50 text-sm">Pilih berkas dari perangkat Anda</p>
           </div>
         )}
 
-        {/* Queue Display */}
+        <p className="text-sm text-white/60 mt-4" role="status">{totalFiles} berkas dipilih</p>
+        </div>
+        <div hidden={uiStep !== 4}>
+        <div className="studio-upload-section mb-5"><h3><span>04</span> Review &amp; upload</h3><p>{category === 'documentation' ? 'Dokumentasi' : 'Berkas Ibadah'} · {selectedSabbathDate}. Periksa antrean sebelum mulai mengunggah.</p></div>
+        {totalFiles === 0 && <p className="studio-upload-waiting">Berkas yang dipilih akan muncul di sini sebelum diunggah.</p>}
         {totalFiles > 0 && (
-          <div className="mt-8">
+          <div className="mt-5">
             <div className="flex justify-between items-end mb-4">
               <div>
                 <h2 className="text-lg font-medium text-white">Antrean ({totalFiles} berkas)</h2>
@@ -669,7 +677,7 @@ function UploadContent() {
 
             <div className="space-y-3">
               {queue.map(item => (
-                <div key={item.id} className="bg-white/5 border border-white/10 rounded-2xl p-4 flex items-center gap-4">
+                <div key={item.id} className="bg-[#1b1a18] border-b border-white/10 p-4 flex items-center gap-4">
                   <div className="w-10 h-10 rounded-lg bg-black/50 flex items-center justify-center flex-shrink-0">
                     {item.file.type.startsWith('image/') ? <ImageIcon className="w-5 h-5 text-white/70" /> :
                      item.file.type.startsWith('video/') ? <Video className="w-5 h-5 text-white/70" /> :
@@ -715,6 +723,12 @@ function UploadContent() {
             </div>
           </div>
         )}
+        </div>
+        <div className="studio-upload-navigation">
+          <button type="button" disabled={uiStep === 1 || uploadActive} onClick={() => setUiStep(step => step - 1)}>← Kembali</button>
+          <span>{uiStep} / 4</span>
+          {uiStep < 4 && <button type="button" disabled={uiStep === 3 && totalFiles === 0} onClick={() => setUiStep(step => step + 1)}>Lanjut →</button>}
+        </div>
       </div>
 
       {/* Close Confirmation Modal */}
