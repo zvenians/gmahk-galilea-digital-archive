@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useCallback, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
-import { X, ChevronLeft, ChevronRight, ExternalLink, Trash2, FileText, FileSpreadsheet, Presentation, AlertTriangle, Download, Share2 } from 'lucide-react';
+import { X, ChevronLeft, ChevronRight, ExternalLink, Trash2, FileText, FileSpreadsheet, Presentation, AlertTriangle, Download, Share2, MoreHorizontal } from 'lucide-react';
 import { FileItem } from '@/lib/types';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
@@ -37,6 +37,7 @@ export default function MediaViewer({
   const [isDeleting, setIsDeleting] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
 
   // Client-side hydration check for safe createPortal to document.body
   const isClient = useSyncExternalStore(
@@ -229,7 +230,7 @@ export default function MediaViewer({
     switch (currentFile.fileType) {
       case 'photo':
         return (
-          <div className="relative w-full h-[75vh] flex items-center justify-center p-4">
+          <div className="relative w-full h-[60svh] flex items-center justify-center p-4">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={`/api/archive/media?fileId=${encodeURIComponent(currentFile.id)}`}
@@ -296,7 +297,7 @@ export default function MediaViewer({
     >
       {/* TASK 4: BACKDROP (z-[9999]) */}
       <div
-        className="fixed inset-0 z-[9999] bg-black/90 backdrop-blur-xl"
+        className="fixed inset-0 z-[9999] bg-[#090909]/98"
         onClick={onClose}
         aria-modal="true"
         role="dialog"
@@ -304,7 +305,7 @@ export default function MediaViewer({
 
       {/* TASK 5: CONTENT (z-[10000]) */}
       <div
-        className="fixed inset-0 z-[10000] flex items-center justify-center p-8 pb-32 pointer-events-none"
+        className="fixed inset-0 z-[10000] flex items-center justify-center p-4 sm:p-8 pb-32 pointer-events-none"
       >
         <div
           className="pointer-events-auto"
@@ -317,7 +318,7 @@ export default function MediaViewer({
         {canGoPrev && (
           <button
             onClick={(e) => { e.stopPropagation(); handlePrev(); }}
-            className="fixed left-8 top-1/2 -translate-y-1/2 p-4 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors shadow-lg cursor-pointer pointer-events-auto z-[10005]"
+            className="fixed left-2 sm:left-8 top-1/2 -translate-y-1/2 p-2 sm:p-4 bg-black/60 hover:bg-white/20 text-white transition-colors cursor-pointer pointer-events-auto z-[10005]"
             aria-label="Sebelumnya"
           >
             <ChevronLeft className="w-6 h-6" />
@@ -327,7 +328,7 @@ export default function MediaViewer({
         {canGoNext && (
           <button
             onClick={(e) => { e.stopPropagation(); handleNext(); }}
-            className="fixed right-8 top-1/2 -translate-y-1/2 p-4 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors shadow-lg cursor-pointer pointer-events-auto z-[10005]"
+            className="fixed right-2 sm:right-8 top-1/2 -translate-y-1/2 p-2 sm:p-4 bg-black/60 hover:bg-white/20 text-white transition-colors cursor-pointer pointer-events-auto z-[10005]"
             aria-label="Selanjutnya"
           >
             <ChevronRight className="w-6 h-6" />
@@ -341,7 +342,7 @@ export default function MediaViewer({
         data-testid="media-action-bar"
       >
         {/* Left spacer / marker */}
-        <div className="max-w-2xl">
+        <div className="max-w-2xl hidden sm:block text-[10px] font-mono tracking-[.2em] text-white/50 pt-3">GALILEA / MEDIA VIEWER
           <div className="hidden" data-testid="marker-galilea">[GALILEA MEDIA VIEWER 4E861B]</div>
         </div>
 
@@ -352,7 +353,7 @@ export default function MediaViewer({
             onClick={handleDownload}
             disabled={isDownloading}
             data-testid="media-download"
-            className="flex items-center justify-center h-10 sm:h-11 px-3 sm:px-4 gap-2 rounded-full bg-white text-black hover:bg-white/80 font-medium transition-colors shadow-md"
+            className="flex items-center justify-center h-10 sm:h-11 px-3 sm:px-4 gap-2 bg-[#e9e5dc] text-black hover:bg-white font-medium transition-colors"
             title="Unduh"
           >
             <Download className="w-4 h-4" />
@@ -366,24 +367,27 @@ export default function MediaViewer({
           <button
             onClick={handleShare}
             data-testid="media-share"
-            className="flex items-center justify-center h-10 sm:h-11 px-3 sm:px-4 gap-2 rounded-full bg-white/20 hover:bg-white/30 text-white transition-colors shadow-md border border-white/20"
+            className="flex items-center justify-center h-10 sm:h-11 px-3 sm:px-4 gap-2 bg-[#22211f] hover:bg-white/20 text-white transition-colors"
             title="Bagikan"
           >
             <Share2 className="w-4 h-4" />
             <span className="text-sm font-semibold">BAGIKAN</span>
           </button>
 
+          {(currentFile.webViewLink || role === 'admin') && <div className="relative">
+            <button type="button" onClick={() => setMoreOpen(value => !value)} aria-expanded={moreOpen} aria-label="Tindakan lainnya" className="h-10 sm:h-11 w-10 sm:w-11 bg-[#22211f] hover:bg-white/20 flex items-center justify-center"><MoreHorizontal size={20} /></button>
+            {moreOpen && <div className="absolute right-0 top-full mt-2 min-w-48 bg-[#242320] border border-white/15 p-2 shadow-2xl">
           {currentFile.webViewLink && (
             <a
               href={currentFile.webViewLink}
               target="_blank"
               rel="noopener noreferrer"
               data-testid="media-drive"
-              className="flex items-center justify-center h-10 sm:h-11 px-3 sm:px-4 gap-2 rounded-full bg-white/20 hover:bg-white/30 text-white transition-colors shadow-md border border-white/20"
+              className="flex items-center gap-3 p-3 text-xs hover:bg-white/10"
               title="Buka di Google Drive"
               onClick={(e) => e.stopPropagation()}
             >
-              <ExternalLink className="w-5 h-5" />
+              <ExternalLink className="w-4 h-4" /> Google Drive
             </a>
           )}
 
@@ -392,18 +396,20 @@ export default function MediaViewer({
               onClick={handleDeleteClick}
               disabled={isDeleting}
               data-testid="media-delete"
-              className="flex items-center justify-center h-10 sm:h-11 min-w-[2.75rem] px-3 rounded-full bg-white/20 hover:bg-red-500 hover:text-white text-white transition-colors shadow-md border border-white/20"
+              className="flex items-center gap-3 p-3 text-xs text-white/70 hover:bg-white/10"
               title="Pindahkan ke Sampah"
               aria-label="Pindahkan ke Sampah"
             >
-              {isDeleting ? <span className="text-sm px-2">MEMINDAHKAN...</span> : <Trash2 className="w-5 h-5" />}
+              {isDeleting ? <span>MEMINDAHKAN...</span> : <><Trash2 className="w-4 h-4" /> Pindahkan ke Sampah</>}
             </button>
           )}
+            </div>}
+          </div>}
 
           <button
             onClick={onClose}
             data-testid="media-close"
-            className="flex items-center justify-center h-10 sm:h-11 w-10 sm:w-11 rounded-full bg-white/20 hover:bg-white/30 text-white transition-colors ml-2 shadow-md border border-white/20"
+            className="flex items-center justify-center h-10 sm:h-11 w-10 sm:w-11 bg-[#22211f] hover:bg-white/20 text-white transition-colors ml-1"
             title="Tutup"
             aria-label="Tutup"
           >
@@ -413,13 +419,21 @@ export default function MediaViewer({
       </div>
 
       {/* TASK 7: BOTTOM INFO BAR (z-[10000]) */}
-      <div className="fixed bottom-0 left-0 right-0 z-[10000] p-6 flex flex-col items-center justify-center pointer-events-none">
+      <div className="fixed bottom-0 left-0 right-0 z-[10000] px-4 sm:px-8 pb-5 flex flex-col items-center justify-center pointer-events-none">
+        {hasFiles && files && !file && <div className="viewer-filmstrip" aria-label="Pilih media">
+          {files.map((item, index) => <button key={item.id} type="button" aria-label={`Buka ${item.name}`} aria-pressed={internalIndex === index} onClick={() => setInternalIndex(index)}>
+            {item.thumbnailUrl || item.fileType === 'photo' ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={item.thumbnailUrl || `/api/archive/media?fileId=${encodeURIComponent(item.id)}`} alt="" loading="lazy" />
+            ) : <FileText size={20}/>}
+          </button>)}
+        </div>}
         <div
-          className="bg-black/60 backdrop-blur-md px-8 py-5 rounded-2xl flex flex-col items-center max-w-3xl w-full text-center border border-white/10 shadow-2xl pointer-events-auto"
+          className="bg-[#121211] px-5 py-4 flex flex-col items-start max-w-3xl w-full text-left border-t border-white/25 pointer-events-auto"
           onClick={(e) => e.stopPropagation()}
         >
-          <h2 className="text-white font-medium text-lg mb-2 truncate w-full">{currentFile.name}</h2>
-          <div className="flex items-center justify-center gap-3 text-xs tracking-wider text-white/70 flex-wrap uppercase font-light">
+          <h2 className="text-white font-normal font-serif text-lg mb-2 truncate w-full">{currentFile.name}</h2>
+          <div className="flex items-center justify-start gap-3 text-[10px] font-mono tracking-wider text-white/50 flex-wrap uppercase font-light">
             <span>{currentFile.sabbathTitle}</span>
             <span className="w-1 h-1 rounded-full bg-white/30"></span>
             <span>{currentFile.category === 'documentation' ? 'Dokumentasi' : 'File Ibadah'}</span>
