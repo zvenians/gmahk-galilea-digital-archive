@@ -5,17 +5,19 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import {
   X,
+  ArrowLeft,
   FileText,
   Upload as UploadIcon,
   CheckCircle2,
   AlertCircle,
   RefreshCw,
   Image as ImageIcon,
-  Video,
 } from 'lucide-react';
 import { ArchiveCategory, SabbathInfo } from '@/lib/types';
 import { useToast } from '@/context/ToastContext';
 import { useAuth } from '@/context/AuthContext';
+import StudioAccount from '@/components/archive/StudioAccount';
+import UploadThumbnail from '@/components/archive/UploadThumbnail';
 
 interface QueueItem {
   id: string;
@@ -39,6 +41,8 @@ function UploadContent() {
   const { showToast } = useToast();
   const { user, role, loading: authLoading, getIdToken } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const stepTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (stepTimer.current) clearTimeout(stepTimer.current); }, []);
 
   const [category, setCategory] = useState<ArchiveCategory>(queryCategory || 'documentation');
   const [sabbathList, setSabbathList] = useState<SabbathInfo[]>([]);
@@ -482,6 +486,13 @@ function UploadContent() {
   const overallProgress = totalFiles === 0 ? 0 : Math.round((queue.reduce((acc, curr) => acc + curr.progress, 0)) / totalFiles);
 
   const [uiStep, setUiStep] = useState(1);
+  const [stepLeaving, setStepLeaving] = useState(false);
+  const moveStep = (next: number) => {
+    if (stepLeaving || uploadActive) return;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { setUiStep(next); return; }
+    setStepLeaving(true);
+    stepTimer.current = setTimeout(() => { setUiStep(next); setStepLeaving(false); }, 170);
+  };
   const formatBytes = (bytes: number) => {
     if (bytes === 0) return '0 B';
     const k = 1024;
@@ -498,12 +509,12 @@ function UploadContent() {
     return (
       <main className="min-h-screen bg-[#050505] text-white">
         <section className="min-h-screen flex items-center justify-center px-6">
-          <div className="max-w-lg text-center border border-white/10 bg-white/[0.03] rounded-[2rem] p-10">
+          <div className="max-w-lg text-center p-10">
             <AlertCircle className="w-10 h-10 mx-auto mb-6 text-white/70" />
             <p className="editorial-eyebrow">AREA TERBATAS</p>
             <h1 className="text-3xl font-light mb-4">Unggahan hanya untuk admin.</h1>
             <p className="text-sm text-white/50 leading-relaxed mb-8">Masuk dengan akun pengurus agar setiap unggahan tercatat dan tersinkron aman dengan Google Drive.</p>
-            <Link href="/login" className="editorial-button">Masuk sebagai admin</Link>
+            <div className="flex justify-center gap-5 items-center"><Link href="/archive" className="editorial-button">Kembali ke arsip</Link><StudioAccount /></div>
           </div>
         </section>
       </main>
@@ -512,8 +523,9 @@ function UploadContent() {
 
   return (
     <main className="studio-upload min-h-screen text-white">
-      <div className="max-w-5xl mx-auto px-6 py-12 sm:py-20">
-        <div className="flex items-start justify-between mb-12 sm:mb-20">
+      <div className="studio-upload-canvas max-w-5xl mx-auto px-6 py-12 sm:py-20">
+        <div className="studio-upload-account"><StudioAccount disabled={uploadActive} /></div>
+        <div className="studio-upload-heading flex items-start justify-between mb-12 sm:mb-20">
           <div><p className="studio-upload-kicker">GALILEA / KONTRIBUSI ARSIP</p><h1 className="studio-upload-title">Bagikan <em>ceritanya.</em></h1><p className="studio-upload-intro">Simpan dokumentasi dan berkas pelayanan agar dapat ditemukan kembali oleh jemaat.</p></div>
           <Link
             href="/archive"
@@ -524,12 +536,14 @@ function UploadContent() {
               }
             }}
             className="p-3 rounded-full bg-white/5 hover:bg-white/10 transition-colors"
+            aria-label="Kembali ke arsip"
           >
-            <X className="w-5 h-5" />
+            <ArrowLeft className="w-5 h-5" />
           </Link>
         </div>
 
-        <div className="studio-upload-steps" aria-label="Langkah unggah">{['Tujuan', 'Sabat', 'File', 'Review'].map((label, index) => <span key={label} aria-current={uiStep === index + 1 ? 'step' : undefined}>0{index + 1} <b>{label}</b></span>)}</div>
+        <div className="studio-upload-steps" aria-label="Langkah unggah" style={{ '--step-progress': `${(uiStep - 1) / 3 * 100}%` } as React.CSSProperties}>{[['Tujuan', 'Pilih koleksi arsip'], ['Sabat', 'Tentukan tanggal Sabat'], ['File', 'Tambahkan dokumentasi'], ['Review', 'Periksa lalu unggah']].map(([label, description], index) => <span key={label} aria-current={uiStep === index + 1 ? 'step' : undefined} data-complete={uiStep > index + 1}><i aria-hidden="true" /><strong>0{index + 1}</strong><b>{label}</b><small>{description}</small></span>)}</div>
+        <div className={`studio-upload-step-body ${stepLeaving ? 'studio-upload-step-leaving' : ''}`} key={uiStep}>
         <div className="mb-8">
           <div className="studio-upload-section" hidden={uiStep !== 1}>
             <h3><span>01</span> Tujuan penyimpanan</h3><p>Pilih jenis koleksi untuk berkas ini.</p>
@@ -599,7 +613,10 @@ function UploadContent() {
 
         <div hidden={uiStep !== 3}>
         <div className="studio-upload-section mb-5"><h3><span>03</span> Pilih file</h3><p>Seret ke area ini atau pilih dari perangkat.</p></div>
-        {!uploadActive && (
+        {!uploadActive && <div className="studio-upload-tray-scene" data-filled={totalFiles > 0}>
+          <div className="studio-upload-tray-papers" aria-hidden="true">{[0, 1, 2].map(index => <span key={index}>{queue[index] && <UploadThumbnail file={queue[index].file} />}</span>)}</div>
+          <div className="studio-upload-tray-rim" aria-hidden="true" />
+        {(
           <div
             onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
             onDragLeave={() => setDragOver(false)}
@@ -624,12 +641,13 @@ function UploadContent() {
             <div className="w-16 h-16 border border-white/20 mx-auto flex items-center justify-center mb-4">
               <UploadIcon className="w-8 h-8 text-white" />
             </div>
-            <h3 className="text-lg font-medium text-white mb-2">Letakkan berkas di sini</h3>
-            <p className="text-white/50 text-sm">Pilih berkas dari perangkat Anda</p>
+            <h3 className="text-lg font-medium text-white mb-2">Seret &amp; lepas file di sini</h3>
+            <p className="text-white/50 text-sm">atau klik untuk memilih dari perangkat</p>
           </div>
-        )}
+        )}</div>}
 
         <p className="text-sm text-white/60 mt-4" role="status">{totalFiles} berkas dipilih</p>
+        {totalFiles > 0 && <div className="studio-upload-drawer" aria-label="Berkas dipilih">{queue.slice(0, 3).map(item => <div key={item.id}><span className="studio-upload-mini"><UploadThumbnail file={item.file} /></span><span>{item.file.name}<small>{formatBytes(item.file.size)} · Siap ditinjau</small></span><CheckCircle2 size={16} /></div>)}</div>}
         </div>
         <div hidden={uiStep !== 4}>
         <div className="studio-upload-section mb-5"><h3><span>04</span> Review &amp; upload</h3><p>{category === 'documentation' ? 'Dokumentasi' : 'Berkas Ibadah'} · {selectedSabbathDate}. Periksa antrean sebelum mulai mengunggah.</p></div>
@@ -675,13 +693,11 @@ function UploadContent() {
               )}
             </div>
 
-            <div className="space-y-3">
+            <div className="studio-upload-queue space-y-3">
               {queue.map(item => (
-                <div key={item.id} className="bg-[#1b1a18] border-b border-white/10 p-4 flex items-center gap-4">
-                  <div className="w-10 h-10 rounded-lg bg-black/50 flex items-center justify-center flex-shrink-0">
-                    {item.file.type.startsWith('image/') ? <ImageIcon className="w-5 h-5 text-white/70" /> :
-                     item.file.type.startsWith('video/') ? <Video className="w-5 h-5 text-white/70" /> :
-                     <FileText className="w-5 h-5 text-white/70" />}
+                <div key={item.id} data-status={item.status} className="studio-upload-queue-item bg-[#1b1a18] border-b border-white/10 p-4 flex items-center gap-4">
+                  <div className="studio-upload-mini w-10 h-10 bg-black/50 flex items-center justify-center flex-shrink-0">
+                    <UploadThumbnail file={item.file} />
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex justify-between mb-1">
@@ -724,10 +740,11 @@ function UploadContent() {
           </div>
         )}
         </div>
+        </div>
         <div className="studio-upload-navigation">
-          <button type="button" disabled={uiStep === 1 || uploadActive} onClick={() => setUiStep(step => step - 1)}>← Kembali</button>
+          <button type="button" disabled={uiStep === 1 || uploadActive || stepLeaving} onClick={() => moveStep(uiStep - 1)}>← Kembali</button>
           <span>{uiStep} / 4</span>
-          {uiStep < 4 && <button type="button" disabled={uiStep === 3 && totalFiles === 0} onClick={() => setUiStep(step => step + 1)}>Lanjut →</button>}
+          {uiStep < 4 && <button type="button" disabled={stepLeaving || (uiStep === 3 && totalFiles === 0)} onClick={() => moveStep(uiStep + 1)}>Lanjut →</button>}
         </div>
       </div>
 
