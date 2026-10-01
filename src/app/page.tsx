@@ -1,5 +1,5 @@
-import ArchiveWorkspace from "@/components/archive/ArchiveWorkspace";
+import StudioWorkspace from "@/components/archive/StudioWorkspace";
 
 export default function Home() {
-  return <ArchiveWorkspace mode="selection" />;
+  return <StudioWorkspace mode="selection" />;
 }
