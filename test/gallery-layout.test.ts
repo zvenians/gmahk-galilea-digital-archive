@@ -25,3 +25,10 @@ test("one portrait does not stretch to fill a desktop row", () => {
   assert.ok(row.height <= 220);
   assert.equal(galleryRows([], 360, (ratio) => ratio).length, 0);
 });
+
+test("spatial rows remain readable with at most two, three or four objects", () => {
+  for (const [width, limit] of [[358, 2], [768, 3], [1440, 4]]) {
+    const rows = galleryRows(Array(12).fill(.56), width, ratio => ratio);
+    assert.ok(rows.every(row => row.items.length <= limit));
+  }
+});

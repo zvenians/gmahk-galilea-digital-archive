@@ -68,3 +68,126 @@
 .heroEmpty button{color:#efe6d5;text-decoration:underline;background:none;border:0;padding:12px}
 @media(max-width:700px){.heroPhoto{left:50%;width:auto;max-width:67%}.featured{padding-top:30px;padding-bottom:50px}}
 @media(prefers-reduced-motion:reduce){.studio *{animation-duration:.01ms!important;transition-duration:.01ms!important;scroll-behavior:auto!important}.galleryRow,.tile,.heroPhoto,.floating{transform:none!important}}
+
+/* Full-canvas composition: navigation belongs to the object, never a bar. */
+.studio{background:#050606;--paper:#eee8dc}
+.prayerBackdrop{height:1000px;background:linear-gradient(0deg,#050606,transparent 65%),url("/jesus-prayer.webp") right top/auto 100% no-repeat;opacity:.3}
+.hero{height:min(880px,100svh);min-height:700px;max-width:1600px;padding:0 5vw;display:block}
+.canvasLogo{position:absolute;top:36px;left:4vw;z-index:8;display:grid;place-items:center}
+.canvasLogo img{filter:invert(1);width:36px;height:44px;object-fit:contain}
+.canvasAccount{position:absolute;top:36px;right:4vw;z-index:9}
+.heroCopy{position:absolute;left:50%;top:37%;width:57%;transform:translate(-50%,-10%);text-align:center;pointer-events:none}
+.heroCopy>.eyebrow{display:none}
+.heroCopy h1{font-size:clamp(62px,8.1vw,125px);letter-spacing:.06em;padding:0;text-shadow:0 6px 25px #0009}
+.heroCopy h1 span{font-size:12px;letter-spacing:.44em;margin-top:6px}
+.intro{font-size:13px;line-height:1.5;margin:15px auto 25px;max-width:none}
+.intro br{display:none}.intro br:after{content:" "}
+.primaryLink{pointer-events:auto;background:#eee4d1;color:#151511!important;border:0;gap:30px;padding:12px 22px;font-size:11px;box-shadow:0 10px 30px #0004}
+.primaryLink svg{order:1}.primaryLink:hover{background:#fff3df}
+.heroStage{position:absolute;inset:0;width:100%;height:100%;min-height:0;margin:0;pointer-events:none}
+.heroStage button{pointer-events:auto}
+.heroPhoto{left:15%;top:11%;height:47%;width:auto;max-width:25%;translate:0;border-radius:0;border:1px solid #e5dccc45;transform:perspective(1200px) rotateY(8deg) rotate(2deg);box-shadow:0 24px 50px #000b}
+.heroPhoto:hover{transform:perspective(1200px) translateY(-7px) rotateY(3deg)}
+.heroSwitch{opacity:0;transform:perspective(1200px) translateX(-40px) rotateY(40deg) scale(.94)}
+.floating{border-radius:0;filter:none;opacity:1;box-shadow:0 18px 55px #0009}
+.floating0{left:44%;top:12%;width:22%;height:21%;transform:perspective(1000px) rotateY(-6deg) rotate(3deg)}
+.floating1{left:4%;top:48%;bottom:auto;width:24%;height:31%;transform:perspective(1000px) rotateY(8deg) rotate(-3deg)}
+.floating2{left:31%;right:auto;top:67%;width:21%;height:25%;transform:perspective(1000px) rotateY(4deg) rotate(3deg)}
+.floating3{right:5%;top:68%;bottom:auto;width:21%;height:25%;transform:perspective(1000px) rotateY(-8deg) rotate(-2deg)}
+.photoLabel{font-size:9px;padding:25px 12px 10px;opacity:0;transition:opacity .25s}.heroPhoto:hover .photoLabel,.heroPhoto:focus-visible .photoLabel{opacity:1}
+.stageControls{bottom:28px;left:5%;pointer-events:auto}
+.stageControls button{display:grid;border-radius:50%;width:32px;height:32px;padding:0;background:transparent}
+.heroActions{position:absolute;bottom:28px;right:5%;display:flex;gap:26px;z-index:8}
+.heroActions a{display:flex;align-items:center;gap:9px;color:#ded7cb;font-size:11px;transition:color .2s,transform .2s}
+.heroActions a:hover{color:white;transform:translateY(-2px)}
+.filmstrip{display:none}
+.heroEmpty{inset:58% 28% 10%;background:transparent}
+.featured,.categories{max-width:1400px;padding-left:5vw;padding-right:5vw}.categoryCard{border:0;border-radius:0;background:transparent;min-height:230px}.categoryVisual:after{background:linear-gradient(90deg,#050606,transparent)}.categoryWorship,.categoryWorship .categoryVisual{background:#0e1010}
+.archive{max-width:1600px;padding:100px 4vw 80px;position:relative}
+.archiveTop{display:contents}
+.back{position:absolute;top:30px;left:4vw;width:39px;height:39px;border:1px solid #ffffff35;border-radius:50%;justify-content:center}
+.archiveActions{position:absolute;top:30px;right:4vw;display:flex;align-items:center;gap:12px;z-index:9}
+.archiveTop .uploadLink{display:grid;place-items:center;width:39px;height:39px;border:1px solid #ffffff35;border-radius:50%}
+.archiveTitle{margin:25px 0 24px}.archiveTitle h1{font:400 clamp(65px,7vw,100px)/1 "Times New Roman",serif;letter-spacing:-.045em}.archiveCount{font-size:17px;color:#999086}.archiveCount small{font-size:8px}
+.context{display:contents}.categoryTabs{position:absolute;top:32px;left:50%;transform:translateX(-50%);padding:2px;background:#08090980}.categoryTabs button{font-size:11px;padding:9px 20px}.categoryTabs button.active{background:#eee4d1;color:#171715}
+.period{position:absolute;right:4vw;top:140px;gap:20px}.period select{padding-right:7px}.period label{font-size:9px}
+.timelineHead{margin:22px 0 12px}.timelineHead>span{font-size:8px}
+.timeline{gap:0;padding-bottom:12px;scroll-snap-type:x mandatory}.date{position:relative;flex:0 0 110px;min-height:54px;padding:14px 8px 4px;border:0;border-top:1px solid #ffffff40;align-items:center;text-align:center;background:none;scroll-snap-align:center}
+.date:before{content:"";position:absolute;top:-3px;width:5px;height:5px;border-radius:50%;background:#a49c8b}
+.date small,.date strong{display:none}.date span{font:10px var(--font-geist-mono),monospace;color:#aaa197}
+.dateActive,.dateActive:hover{background:none;border:0;border-top:1px solid #eee4d1;color:#eee4d1}.dateActive:before{background:#eee4d1;box-shadow:0 0 0 4px #e8d2ae16}.dateActive span{color:#eee4d1}.date:hover{background:none;transform:none}.date:hover span{color:#fff}
+.galleryTop{margin:15px 0 24px;align-items:center}.galleryTop h2{font-size:23px}.galleryTop .eyebrow{font-size:8px}.galleryControls{gap:15px}.typeTabs button{padding:8px;font-size:10px}.search input{font-size:11px}.sort{font-size:10px}
+.gallery{padding:0;perspective:none}.galleryRow{transform:none;margin-bottom:17px}.tileMedia{border:0;border-radius:0;box-shadow:0 18px 32px #0005}.tileCaption{padding-top:7px}.tileCaption>span{font-size:10px}.tileCaption small{font-size:8px}
+.detailLayer{background:#050606;padding:50px 7vw}.detailBackdrop{background:linear-gradient(90deg,#06070770,#060707),url("/jesus-prayer.webp") right center/auto 100% no-repeat;opacity:.2;backdrop-filter:none}
+.detail{width:min(1220px,100%);background:transparent;box-shadow:none;border:0;border-radius:0;overflow:visible;grid-template-columns:minmax(0,1.45fr) minmax(280px,.8fr);gap:5vw}
+.detailTop{position:absolute;inset:0 0 auto;padding:0}.detailTop>span{display:none}.detailTop button{position:fixed;top:30px;right:35px;width:40px;height:40px;border:1px solid #ffffff40;border-radius:50%;display:grid;place-items:center}
+.detailImage{height:65svh;min-height:350px;margin:0;background:transparent;overflow:visible;border-radius:0;transform:perspective(1400px) rotateY(9deg) rotate(-2deg);box-shadow:none}
+.detailImage img{filter:drop-shadow(18px 30px 20px #0008)}
+.detailBody{padding:0;align-self:center}.detailBody>.eyebrow{font-size:9px}.detailBody h2{font:400 34px/1.2 "Times New Roman",serif;margin:12px 0 24px}.detailBody dl div{border:0;padding:6px 0;font-size:11px}.detailBody dl{padding-top:14px}.detailBody dd{max-width:68%}
+.detailActions{display:flex;flex-wrap:wrap;gap:10px;margin-top:28px}.detailActions a,.detailActions button{flex:1;border:1px solid #ffffff40;border-radius:28px;background:transparent;justify-content:center;gap:12px;padding:12px}
+.detailActions a{flex-basis:100%;order:-1;background:#eee4d1;color:#111;border:0}.detailActions .detailOpen{background:transparent;color:#eee4d1;font-weight:400;order:2}
+@media(max-width:1000px) and (min-width:701px){.hero{min-height:680px;height:80svh}.heroCopy{top:38%}.heroCopy h1{font-size:74px}.intro{max-width:300px}.period{top:139px}.galleryControls{gap:6px}.search input{width:125px}}
+@media(max-width:700px){
+ .prayerBackdrop{height:820px;background-position:70% top;opacity:.25}
+ .hero{height:790px;min-height:0;padding:0;overflow:hidden}.canvasLogo{top:22px;left:22px}.canvasLogo img{width:27px;height:34px}.canvasAccount{top:22px;right:22px}
+ .heroCopy{top:113px;left:0;width:100%;transform:none;padding:0 18px}.heroCopy h1{font-size:clamp(44px,12.5vw,80px);letter-spacing:.06em}.heroCopy h1 span{font-size:9px;letter-spacing:.4em}.intro{font-size:12px;margin:17px auto 20px;max-width:270px}
+ .heroStage{inset:300px 0 90px;height:auto;width:100%;margin:0}.heroPhoto{top:13%;left:27%;height:64%;max-width:51%;transform:perspective(1000px) rotateY(-6deg) rotate(2deg)}
+ .floating0{top:0;left:48%;width:33%;height:22%}.floating1{top:25%;left:-5%;width:32%;height:39%}.floating2{top:71%;left:5%;width:31%;height:27%}.floating3{top:62%;right:-5%;width:33%;height:28%}
+ .stageControls{bottom:-57px;left:22px;gap:6px}.stageControls span{font-size:8px;margin-right:3px}.stageControls button{width:26px;height:26px}.heroActions{right:22px;bottom:34px;gap:17px}.heroActions a{font-size:10px}
+ .archive{padding:85px 18px 60px}.back{top:22px;left:18px;width:33px;height:33px}.archiveActions{top:22px;right:18px;gap:7px}.archiveTop .uploadLink{width:33px;height:33px}.archiveActions .canvas-account{display:none}
+ .categoryTabs{top:22px;padding:1px}.categoryTabs button{padding:9px 10px;font-size:9px}.archiveTitle{margin:18px 0 28px}.archiveTitle h1{font-size:66px}.period{top:108px;right:18px;gap:10px;padding:0}.period label{display:block;font-size:8px;letter-spacing:0}.period select{display:block;font-size:12px}
+ .timelineHead{margin-top:25px}.date{flex-basis:100px}.galleryTop{margin:10px 0 20px;align-items:start;gap:14px}.galleryTop h2{font-size:23px}.galleryControls{gap:12px;width:100%}.typeTabs{width:auto;flex:1}.typeTabs button{padding:8px;font-size:9px}.search{flex-basis:72%;order:3}.search input{width:100%}.sort{order:4}
+ .detailLayer{padding:0;align-items:end;background:#050606a8}.detail{display:block;background:#0a0b0b;max-height:90svh;overflow-y:auto;border-radius:18px 18px 0 0;padding:45px 23px 28px}.detailTop button{position:absolute;top:10px;right:12px;width:32px;height:32px}.detailImage{height:35svh;min-height:190px;margin:0 5px 25px;transform:perspective(1000px) rotateY(5deg)}.detailBody{padding:0}.detailBody h2{font-size:28px}.detailActions{margin-top:22px}
+}
+@media(prefers-reduced-motion:reduce){.heroPhoto,.floating,.detailImage{transform:none!important}}
+
+.categoryTabs{width:max-content;max-width:60%;gap:0}.categoryTabs button{flex:none}
+.heroStage .heroPhoto{transform:perspective(1200px) rotateX(var(--rx)) rotateY(calc(var(--ry) + 8deg)) rotate(2deg)}
+.heroStage .heroSwitch{opacity:0;transform:perspective(1200px) translateX(-40px) rotateY(40deg) scale(.94)}
+.detailTop{z-index:2}
+@media(max-width:700px){.categoryTabs{max-width:50%}.categoryTabs button{padding:9px 8px;font-size:8px}.galleryControls .typeTabs{display:flex;flex-wrap:nowrap;width:auto}.galleryControls .typeTabs button{display:block;flex:none}.galleryControls .search{flex-basis:70%}.galleryControls .sort{font-size:10px}.heroStage .heroPhoto{transform:perspective(1000px) rotateY(-6deg) rotate(2deg)}}
+@media(max-width:360px){.categoryTabs button{font-size:7px;padding:9px 6px}}
+.studio{display:flex;flex-direction:column}.hero{width:100%;order:0}.featured{width:100%;order:1;padding-top:45px;padding-bottom:15px}.categories{width:100%;order:2;padding-bottom:60px}
+.archive{width:100%;min-width:0}.galleryTop,.galleryControls,.gallery{min-width:0}
+@media(max-width:700px){.galleryTop{display:block}.galleryTop>div:first-child{margin-bottom:18px}.galleryControls{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px 16px}.galleryControls .typeTabs{grid-column:1/-1;gap:12px}.galleryControls .search{order:0;min-width:0}.galleryControls .sort{order:0}}
+@media(prefers-reduced-motion:reduce){.heroStage .heroPhoto,.heroStage .heroSwitch{transform:none!important}}
+
+/* Physical objects on a quiet studio plane. */
+.gallery{perspective:1800px;padding-top:25px;padding-bottom:45px}
+.galleryRow{position:relative;transform:rotateX(5deg) rotateY(-2deg) scale(.98);transform-style:preserve-3d;transform-origin:center center;gap:12px;margin-bottom:42px}
+.galleryRow:nth-child(even){transform:rotateX(4deg) rotateY(2deg) scale(.98)}
+.tile{position:relative;overflow:visible;transform-style:preserve-3d;--rx:0deg;--ry:0deg;transform:rotateX(var(--rx)) rotateY(var(--ry));transition:transform .5s cubic-bezier(.2,.8,.2,1),opacity .4s}
+.tile:nth-child(even){transform:translateY(15px) rotateX(var(--rx)) rotateY(var(--ry)) rotateZ(.7deg)}
+.tileMedia{position:relative;border:1px solid #e5ddd13d;border-radius:1px;box-shadow:2px 3px 0 #353631,5px 6px 0 #111412,13px 24px 30px #000b;transition:box-shadow .45s,border-color .45s}
+.tileMedia:after{content:"";position:absolute;inset:0;pointer-events:none;box-shadow:inset 0 0 0 1px #ffffff0e}
+.tileCaption{padding:13px 3px 0;transform:translateZ(2px)}
+.tileSelected,.tileSelected:nth-child(even){transform:translateY(-18px) translateZ(50px) rotateY(-7deg)!important}
+@media(hover:hover) and (pointer:fine){.galleryRow:has(.tile:hover) .tile:not(:hover){opacity:.65;transform:translateZ(-18px)}.galleryRow .tile:hover{z-index:5;opacity:1;transform:translateY(-14px) translateZ(45px) rotateX(var(--rx)) rotateY(var(--ry))}.tile:hover .tileMedia{border-color:#ece1c780;box-shadow:2px 4px 0 #47473e,6px 8px 0 #181b17,20px 40px 40px #000c}}
+.detailLayer{background:#050606f5;perspective:1600px;animation:detailCanvas .55s .13s both;padding:50px 8vw 65px}
+.detailBackdrop{opacity:.13;background:linear-gradient(90deg,#05060655,#050606bb),url('/jesus-prayer.webp') right center/auto 100% no-repeat}
+.detail{position:relative;animation:none;width:min(1200px,100%);grid-template-columns:minmax(0,1.6fr) minmax(270px,.8fr);gap:6vw;overflow:visible;transform:none;max-height:90svh}
+.detailTop{position:absolute;inset:0 0 auto}.detailTop button{position:fixed;top:28px;right:30px;z-index:5}
+.detailImage{position:relative;height:68svh;min-height:340px;display:grid;place-items:center;transform:none;perspective:1400px;margin:0;overflow:visible}
+.detailObject{position:relative;width:min(100%,calc(63svh * var(--object-ratio,1.33)));aspect-ratio:var(--object-ratio,1.33);transform:rotateY(12deg) rotateX(2deg) rotateZ(-2deg);transform-style:preserve-3d;background:#101211;border:1px solid #e7dfc680;box-shadow:3px 4px 0 #45463e,7px 8px 0 #161b17,24px 35px 55px #000c;animation:objectUnfold .7s .18s both}
+.detailObject img{object-fit:contain;filter:none}.objectShadow{position:absolute;bottom:0;left:15%;width:70%;height:30px;border-radius:50%;background:#b9a67714;filter:blur(14px);transform:rotateX(65deg);pointer-events:none}
+.detailBody{align-self:center;padding:0;max-width:370px;animation:objectText .6s .25s both}
+.detailBody>.eyebrow{font-size:8px;letter-spacing:.18em;color:#9a9488;margin-bottom:18px}
+.detailBody h2{font:400 clamp(27px,2.5vw,38px)/1.13 "Times New Roman",serif;margin:0 0 15px;letter-spacing:-.025em}
+.detailContext{font-size:14px;line-height:1.6;color:#ddd9d0;margin:0 0 20px}.detailContext span{display:block;color:#97958c;font-size:12px}
+.objectMetadata{border-top:1px solid #ffffff25;padding:14px 0 0!important;margin:0;font:9px/1.65 var(--font-geist-mono),monospace;color:#aaa397}
+.objectMetadata div{display:block!important;padding:0!important;border:0!important}.objectMetadata dt{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}.objectMetadata dd{max-width:100%;margin:0;text-align:left;overflow-wrap:anywhere;font-size:9px}.objectMetadata dd span{padding:0 8px;color:#666}
+.detailActions{gap:9px;margin-top:22px}.detailActions a,.detailActions button{padding:11px 16px;font-size:12px;white-space:nowrap;min-height:42px}.detailActions a{justify-content:flex-start;flex:1 0 100%;padding-left:24px}.detailActions .detailOpen{order:0}
+.detailNavigation{position:absolute;bottom:-40px;left:0;width:100%;display:flex;align-items:center;justify-content:space-between;gap:20px;color:#a8a091}
+.detailNavigation button{width:36px;height:36px;border:1px solid #ffffff35;border-radius:50%;background:transparent;color:#eee;display:grid;place-items:center}.detailNavigation button:disabled{opacity:.25;cursor:default}.detailNavigation>span{display:flex;align-items:center;gap:20px;font:9px var(--font-geist-mono),monospace}.detailNavigation i{display:block;width:90px;height:2px;background:repeating-linear-gradient(90deg,#b5ada0 0 15px,transparent 15px 22px)}
+@keyframes detailCanvas{from{opacity:0}to{opacity:1}}
+@keyframes objectUnfold{from{opacity:0;transform:translateY(30px) translateZ(70px) rotateY(-65deg) rotateZ(-4deg)}to{opacity:1;transform:rotateY(12deg) rotateX(2deg) rotateZ(-2deg)}}
+@keyframes objectText{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+@media(max-width:1000px) and (min-width:701px){.detailLayer{padding:40px 6vw 70px}.detail{gap:5vw;grid-template-columns:minmax(0,1.1fr) minmax(250px,.8fr)}.detailImage{height:60svh}.detailBody h2{font-size:27px}}
+@media(max-width:700px){
+ .gallery{padding-top:17px}.galleryRow,.galleryRow:nth-child(even){transform:none;margin-bottom:29px}.tile{transform:rotateY(-3deg)}.tile:nth-child(even){transform:translateY(8px) rotateY(3deg)}.tileMedia{box-shadow:2px 3px 0 #33382f,7px 14px 17px #000a}.tile:active{transform:translateY(-7px) rotateY(-6deg)}
+ .detailLayer{padding:0;align-items:end;background:#050606cf}.detail{display:block;width:100%;padding:45px 24px 15px;background:#0a0c0b;border:1px solid #ffffff18;border-bottom:0;border-radius:18px 18px 0 0;max-height:94svh;overflow:auto;animation:objectText .45s .12s both}
+ .detailTop button{position:absolute;top:10px;right:13px;width:31px;height:31px}.detailImage{height:31svh;min-height:180px;margin-bottom:20px}.detailObject{width:min(100%,calc(29svh * var(--object-ratio,1.33)));animation-duration:.55s}.objectShadow{height:15px;bottom:-6px}
+ .detailBody{max-width:none;animation:none}.detailBody>.eyebrow{display:none}.detailBody h2{font-size:27px;margin-bottom:8px}.detailContext{font-size:12px;margin-bottom:12px;display:flex;gap:14px;align-items:center}.detailContext span{font-size:10px}.objectMetadata{padding-top:10px!important}.objectMetadata dd{font-size:8px}.detailActions{margin-top:16px;gap:8px}.detailActions a,.detailActions button{font-size:11px;padding:10px;min-height:38px}.detailActions a{justify-content:center}
+ .detailNavigation{position:static;margin-top:15px}.detailNavigation button{width:28px;height:28px}.detailNavigation i{width:55px}
+}
+@media(prefers-reduced-motion:reduce){.galleryRow,.galleryRow:nth-child(even),.tile,.tile:nth-child(even),.detailObject{transform:none!important;animation:none!important}.detailLayer,.detailBody,.detail{animation:none!important}}

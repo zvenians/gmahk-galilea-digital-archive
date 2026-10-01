@@ -6,7 +6,7 @@ import { usePathname } from 'next/navigation';
 export default function Footer() {
   const pathname = usePathname();
   const currentYear = new Date().getFullYear();
-  if (pathname === '/' || pathname === '/archive') return null;
+  if (pathname === '/' || pathname === '/archive' || pathname === '/upload') return null;
 
   return (
     <footer className="w-full border-t border-white/10 bg-black text-white/50">

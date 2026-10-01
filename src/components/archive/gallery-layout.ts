@@ -6,13 +6,14 @@ export function galleryRows<T>(
 ) {
   const gap = 12;
   const target = width < 600 ? 170 : 220;
+  const maxItems = width < 600 ? 2 : width < 1000 ? 3 : 4;
   const rows: { items: T[]; height: number }[] = [];
   let row: T[] = [];
   let sum = 0;
   for (const item of items) {
     row.push(item);
     sum += ratioFor(item);
-    if (sum * target + gap * (row.length - 1) >= width) {
+    if (row.length === maxItems || sum * target + gap * (row.length - 1) >= width) {
       rows.push({ items: row, height: (width - gap * (row.length - 1)) / sum });
       row = [];
       sum = 0;

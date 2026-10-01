@@ -292,7 +292,7 @@ export default function MediaViewer({
   // transform, backdrop-filter, or layout context in ArchivePage or layout.
   return createPortal(
     <div
-      className="fixed inset-0 z-[9999]"
+      className={`fixed inset-0 z-[9999] ${role !== 'admin' ? 'media-canvas' : ''}`}
       data-testid="media-viewer-portal"
     >
       {/* TASK 4: BACKDROP (z-[9999]) */}

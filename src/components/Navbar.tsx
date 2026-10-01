@@ -5,7 +5,6 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
-import styles from '@/components/archive/workspace.module.css';
 import {
   Menu,
   X,
@@ -31,25 +30,10 @@ export default function Navbar() {
     ] : []),
   ];
 
-  if (isViewer || pathname === '/upload') {
-    return (
-      <header className="studio-masthead">
-        <Link href="/" className="studio-brand" aria-label="Galilea Digital Archive, beranda">
-          <Image src="/adventist-logo.svg" alt="Logo Adventist" width={31} height={31} />
-          <span>GALILEA <small>DIGITAL ARCHIVE</small></span>
-        </Link>
-        <div className="studio-masthead-actions">
-          {pathname !== '/archive' && <Link href="/archive" className="studio-masthead-link">ARSIP <span aria-hidden="true">↗</span></Link>}
-          {pathname !== '/upload' && <Link href="/upload" className="studio-masthead-link">UNGGAH <span aria-hidden="true">↗</span></Link>}
-          {role === 'admin' && <Link href="/admin" className="studio-masthead-link studio-admin-link">ADMIN</Link>}
-          {user ? <button type="button" className="studio-account" onClick={signOut} title={`Keluar dari ${user.email}`} aria-label="Keluar">{user.displayName?.charAt(0).toUpperCase() || 'G'}</button> : !loading && !roleLoading && <button type="button" className="studio-masthead-link studio-signin" onClick={() => signInWithGoogle()} disabled={isSigningIn}>MASUK</button>}
-        </div>
-      </header>
-    );
-  }
+  if (isViewer || pathname === '/upload') return null;
 
   return (
-    <header className={`sticky top-0 z-50 backdrop-blur-md bg-black/70 border-b border-white/10 transition-all ${isViewer ? styles.viewerHeader : ''}`}>
+    <header className="sticky top-0 z-50 backdrop-blur-md bg-black/70 border-b border-white/10 transition-all">
       <div className="max-w-[1400px] mx-auto px-6 sm:px-12">
         <div className="flex items-center justify-between h-20">
           {/* Brand Logo */}
