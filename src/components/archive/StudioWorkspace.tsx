@@ -7,6 +7,7 @@ import { ArrowDownToLine, ArrowLeft, ArrowRight, ChevronLeft, ChevronRight, File
 import type { ArchiveCategory, FileItem, SabbathInfo } from "@/lib/types";
 import { getNearestSabbath, getSabbathsInQuarter, isValidSabbathDate, parseSabbathDetails } from "@/lib/sabbath";
 import MediaViewer from "@/components/MediaViewer";
+import StudioAccount from "./StudioAccount";
 import { galleryRows } from "./gallery-layout";
 import styles from "./studio.module.css";
 
@@ -100,7 +101,7 @@ export default function StudioWorkspace({ mode, initialCategory = "documentation
     panel?.focus();
     const trap = (event: KeyboardEvent) => {
       if (event.key !== "Tab" || !panel) return;
-      const items = Array.from(panel.querySelectorAll<HTMLElement>('button, a[href], [tabindex="0"]'));
+      const items = Array.from(panel.querySelectorAll<HTMLElement>('button:not(:disabled), a[href], [tabindex="0"]'));
       const first = items[0], last = items[items.length - 1];
       if (event.shiftKey && (document.activeElement === first || document.activeElement === panel)) { event.preventDefault(); last?.focus(); }
       else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
@@ -114,6 +115,8 @@ export default function StudioWorkspace({ mode, initialCategory = "documentation
   const activeIndex = Math.min(deckIndex, Math.max(0, deckFiles.length - 1));
   const active = deckFiles[activeIndex];
   const selected = files.find(file => file.id === selectedId);
+  const detailFiles = visibleFiles.some(file => file.id === selectedId) ? visibleFiles : files;
+  const detailIndex = detailFiles.findIndex(file => file.id === selectedId);
   const viewerIndex = visibleFiles.findIndex(file => file.id === viewerId);
   const ratioFor = (file: FileItem) => ratios[file.id] || (!["photo", "video"].includes(file.fileType) ? .707 : file.fileType === "video" ? 16 / 9 : 4 / 3);
   const rows = galleryRows(visibleFiles, Math.max(200, width), ratioFor);
@@ -154,10 +157,12 @@ export default function StudioWorkspace({ mode, initialCategory = "documentation
     <div className={styles.prayerBackdrop} aria-hidden="true" />
     {mode === "selection" ? <>
       <section className={styles.hero} aria-labelledby="hero-heading">
+        <Link href="/" className={styles.canvasLogo} aria-label="Galilea Digital Archive, beranda"><Image src="/adventist-logo.svg" alt="Logo Adventist" width={40} height={48} /></Link>
+        <div className={styles.canvasAccount}><StudioAccount /></div>
         <div className={styles.heroCopy}>
           <p className={styles.eyebrow}>ARSIP KEHIDUPAN JEMAAT</p>
           <h1 id="hero-heading">GALILEA<span>DIGITAL ARCHIVE</span></h1>
-          <p className={styles.intro}>Kenangan yang hidup.<br />Iman yang menyatukan.</p>
+          <p className={styles.intro}>Kenangan yang hidup. Iman yang menyatukan.</p>
           <Link className={styles.primaryLink} href="/archive?category=documentation">Jelajahi Arsip <ArrowRight size={17} /></Link>
         </div>
         <div className={styles.heroStage} onPointerMove={moveDepth} onPointerLeave={resetDepth} onTouchStart={event => { swipeStart.current = event.touches[0].clientX; }} onTouchEnd={event => { if (swipeStart.current !== null) { const delta = event.changedTouches[0].clientX - swipeStart.current; if (Math.abs(delta) > 45) moveDeck(delta > 0 ? -1 : 1); swipeStart.current = null; } }}>
@@ -165,6 +170,7 @@ export default function StudioWorkspace({ mode, initialCategory = "documentation
           {active ? <button type="button" className={`${styles.heroPhoto} ${switching ? styles.heroSwitch : ""}`} aria-label={`Detail ${active.name}`} style={{ "--hero-ratio": ratioFor(active) } as CSSProperties} onClick={() => choose(active)}><Thumb file={active} onRatio={onRatio} /><span className={styles.photoLabel}>{active.sabbathTitle || "Arsip Galilea"}<ArrowRight size={17} /></span></button> : <div className={styles.heroEmpty}>{loading ? "Memuat kenangan…" : error ? <span>Koleksi belum bisa dimuat. <button type="button" onClick={() => { setLoading(true); setRetry(value => value + 1); }}>Coba lagi</button></span> : "Foto arsip akan tampil di sini."}</div>}
           {deckFiles.length > 1 && <div className={styles.stageControls}><span>{String(activeIndex + 1).padStart(2, "0")} / {String(deckFiles.length).padStart(2, "0")}</span><button type="button" onClick={() => moveDeck(-1)} aria-label="Foto sebelumnya"><ChevronLeft size={18} /></button><button type="button" onClick={() => moveDeck(1)} aria-label="Foto berikutnya"><ChevronRight size={18} /></button></div>}
         </div>
+        <div className={styles.heroActions}><Link href="/archive"><FileText size={16} /> Arsip</Link><Link href="/upload"><Upload size={16} /> Unggah</Link></div>
         {deckFiles.length > 0 && <div className={styles.filmstrip} aria-label="Pilih foto utama">
           <button type="button" onClick={() => moveDeck(-1)} aria-label="Foto sebelumnya"><ArrowLeft size={18}/></button>
           <div>{deckFiles.map((file, index) => <button type="button" key={file.id} aria-label={`Tampilkan ${file.name}`} aria-pressed={activeIndex === index} onClick={() => setDeckIndex(index)}><Thumb file={file}/></button>)}</div>
@@ -174,7 +180,7 @@ export default function StudioWorkspace({ mode, initialCategory = "documentation
       <section className={styles.categories} aria-labelledby="categories-heading"><div className={styles.sectionHead}><div><p className={styles.eyebrow}>02 / TEMUKAN KOLEKSI</p><h2 id="categories-heading">Jelajahi <em>Arsip</em></h2></div></div><div className={styles.categoryGrid}><Link href="/archive?category=documentation" className={styles.categoryCard}><span className={styles.categoryVisual}>{deckFiles[0] && <Thumb file={deckFiles[0]} />}</span><span className={styles.categoryContent}><small>01 / KOLEKSI VISUAL</small><strong>Dokumentasi</strong><span>Foto dan video yang menyimpan cerita bersama.</span><ArrowRight size={22} /></span></Link><Link href="/archive?category=worship" className={`${styles.categoryCard} ${styles.categoryWorship}`}><span className={styles.categoryVisual}><FileText size={92} strokeWidth={.5} /></span><span className={styles.categoryContent}><small>02 / BERKAS JEMAAT</small><strong>Berkas Ibadah</strong><span>Materi dan dokumen untuk pelayanan Sabat.</span><ArrowRight size={22} /></span></Link></div><div className={styles.endLink}><Link href="/archive">Lihat seluruh arsip <ArrowRight size={17} /></Link><Link href="/upload">Punya dokumentasi? Unggah di sini <Upload size={16} /></Link></div></section>
       <section className={styles.featured} aria-labelledby="featured-heading"><div className={styles.sectionHead}><div><p className={styles.eyebrow}>01 / POTONGAN CERITA</p><h2 id="featured-heading">Momen <em>Pilihan</em></h2></div><span className={styles.sectionNote}>Dipilih dari perjalanan Galilea</span></div><div className={styles.featuredStrip}>{files.slice(0, 8).map((file, index) => <button type="button" key={file.id} className={styles.featuredItem} onClick={() => choose(file)}><span className={styles.featuredImage}><Thumb file={file} /></span><span className={styles.featuredIndex}>{String(index + 1).padStart(2, "0")}</span><span className={styles.featuredName}>{displayTitle(file)}</span></button>)}</div></section>
     </> : <main className={styles.archive}>
-      <div className={styles.archiveTop}><Link href="/" className={styles.back}><ArrowLeft size={17} /> Beranda</Link><span className={styles.eyebrow}>GALILEA / KOLEKSI DIGITAL</span><Link href="/upload" className={styles.uploadLink}>Unggah berkas <Upload size={15} /></Link></div>
+      <div className={styles.archiveTop}><Link href="/" className={styles.back} aria-label="Kembali ke beranda"><ArrowLeft size={17} /></Link><div className={styles.archiveActions}><Link href="/upload" className={styles.uploadLink} aria-label="Unggah berkas"><Upload size={17} /></Link><StudioAccount /></div></div>
       <div className={styles.archiveTitle}><div><h1>{year}</h1><p>Triwulan {quarter} / Arsip jemaat</p></div><span className={styles.archiveCount}>{visibleFiles.length.toString().padStart(2, "0")} <small>BERKAS DIMUAT</small></span></div>
       <div className={styles.context}><div className={styles.categoryTabs} aria-label="Kategori">{(["documentation", "worship"] as ArchiveCategory[]).map(value => <button type="button" key={value} className={category === value ? styles.active : ""} aria-pressed={category === value} onClick={() => { if (category !== value) changeArchive(() => setCategory(value)); }}>{value === "documentation" ? "Dokumentasi" : "Berkas Ibadah"}</button>)}</div><div className={styles.period}><label>Tahun <select aria-label="Tahun" value={year} onChange={event => changeArchive(() => setYear(Number(event.target.value)))}>{[...new Set([year, ...years])].sort((a, b) => b - a).map(value => <option key={value} value={value}>{value}</option>)}</select></label><label>Triwulan <select aria-label="Triwulan" value={quarter} onChange={event => changeArchive(() => setQuarter(Number(event.target.value)))}>{[1, 2, 3, 4].map(value => <option key={value} value={value}>0{value}</option>)}</select></label></div></div>
       <div className={styles.timelineHead}><span className={styles.eyebrow}>TANGGAL SABAT</span><span>Geser untuk memilih tanggal <ArrowRight size={13} /></span></div>
@@ -182,7 +188,36 @@ export default function StudioWorkspace({ mode, initialCategory = "documentation
       <div className={styles.galleryTop}><div><p className={styles.eyebrow}>KOLEKSI / {category === "documentation" ? "DOKUMENTASI" : "BERKAS IBADAH"}</p><h2>{sabbath ? sabbaths.find(info => info.date === sabbath)?.formattedTitle || "Sabat Pilihan" : "Pilih Sabat"}</h2></div><div className={styles.galleryControls}><div className={styles.typeTabs} aria-label="Jenis berkas">{([ ["all", "Semua"], ["photo", "Foto"], ["video", "Video"], ["document", "Dokumen"] ] as [Filter, string][]).map(([value, label]) => <button type="button" key={value} aria-pressed={filter === value} className={filter === value ? styles.typeActive : ""} onClick={() => { setFilter(value); setSelectedId(null); }}>{label}</button>)}</div><label className={styles.search}><Search size={16} /><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Cari dalam koleksi ini" aria-label="Cari dalam koleksi ini" /></label><select className={styles.sort} aria-label="Urutkan koleksi" value={sort} onChange={event => setSort(event.target.value)}><option value="newest">Terbaru</option><option value="oldest">Terlama</option><option value="name">Nama</option></select></div></div>
       <div ref={galleryRef} className={styles.gallery}>{loading ? <div className={styles.empty}>Memuat koleksi…</div> : error ? <div className={styles.empty}>Koleksi belum bisa dimuat. <button type="button" onClick={() => { setLoading(true); setRetry(value => value + 1); }}>Coba lagi</button></div> : !visibleFiles.length ? <div className={styles.empty}>Belum ada berkas di pilihan ini. <Link href="/upload">Unggah dokumentasi <ArrowRight size={14} /></Link></div> : rows.map((row, index) => <div key={index} className={styles.galleryRow}>{row.items.map(file => tile(file, row.height))}</div>)}</div>
     </main>}
-    {selected && <div className={styles.detailLayer}><button type="button" className={styles.detailBackdrop} aria-label="Tutup detail" onClick={closeDetail} /><aside ref={detailRef} tabIndex={-1} role="dialog" aria-modal="true" className={styles.detail} aria-label={`Detail ${selected.name}`}><div className={styles.detailTop}><span className={styles.eyebrow}>OBJEK ARSIP / {kind(selected).toUpperCase()}</span><button type="button" onClick={closeDetail} aria-label="Tutup detail"><X size={20} /></button></div><div className={styles.detailImage}><Thumb file={selected} /></div><div className={styles.detailBody}><p className={styles.eyebrow}>GALILEA / {selected.year}</p><h2>{displayTitle(selected)}</h2><dl><div><dt>Nama file</dt><dd>{selected.name}</dd></div><div><dt>Tanggal Sabat</dt><dd>{selected.sabbathTitle}</dd></div><div><dt>Kategori</dt><dd>{selected.category === "documentation" ? "Dokumentasi" : "Berkas Ibadah"}</dd></div><div><dt>Periode</dt><dd>{selected.year} / Triwulan {selected.quarter}</dd></div><div><dt>Format / ukuran</dt><dd>{selected.mimeType.split("/").pop()?.toUpperCase()} · {sizeLabel(selected.size)}</dd></div></dl><div className={styles.detailActions}><button type="button" className={styles.detailOpen} onClick={() => setViewerId(selected.id)}>Buka <ArrowRight size={17} /></button><a href={`/api/archive/download?fileId=${encodeURIComponent(selected.id)}`} download>Unduh <ArrowDownToLine size={16} /></a><button type="button" onClick={() => shareFile(selected)}>Bagikan <Share2 size={16} /></button></div>{shareStatus && <p className={styles.shareStatus} role="status">{shareStatus}</p>}</div></aside></div>}
+    {selected && <div className={styles.detailLayer}>
+      <button type="button" className={styles.detailBackdrop} aria-label="Tutup detail" onClick={closeDetail} />
+      <aside ref={detailRef} tabIndex={-1} role="dialog" aria-modal="true" className={styles.detail} aria-label={`Detail ${selected.name}`}>
+        <div className={styles.detailTop}><button type="button" onClick={closeDetail} aria-label="Tutup detail"><X size={20} /></button></div>
+        <div className={styles.detailImage}>
+          <div key={selected.id} className={styles.detailObject} style={{ '--object-ratio': ratioFor(selected) } as CSSProperties}><Thumb file={selected} onRatio={onRatio} /></div>
+          <span className={styles.objectShadow} aria-hidden="true" />
+        </div>
+        <div className={styles.detailBody}>
+          <p className={styles.eyebrow}>GALILEA / {selected.year}</p>
+          <h2>{selected.sabbathTitle || selected.name}</h2>
+          <p className={styles.detailContext}>{selected.category === 'documentation' ? 'Dokumentasi' : 'Berkas Ibadah'}<span>Triwulan {['I', 'II', 'III', 'IV'][selected.quarter - 1]}</span></p>
+          <dl className={styles.objectMetadata}>
+            <div><dt>Nama file</dt><dd>{selected.name}</dd></div>
+            <div><dt>Format / ukuran</dt><dd>{selected.mimeType.split('/').pop()?.toUpperCase()} <span>·</span> {sizeLabel(selected.size)}</dd></div>
+          </dl>
+          <div className={styles.detailActions}>
+            <a href={`/api/archive/download?fileId=${encodeURIComponent(selected.id)}`} download><ArrowDownToLine size={16} /> Unduh</a>
+            <button type="button" onClick={() => shareFile(selected)}><Share2 size={16} /> Bagikan</button>
+            <button type="button" className={styles.detailOpen} onClick={() => setViewerId(selected.id)}><ArrowRight size={17} /> Buka</button>
+          </div>
+          {shareStatus && <p className={styles.shareStatus} role="status">{shareStatus}</p>}
+        </div>
+        {detailFiles.length > 1 && <div className={styles.detailNavigation} aria-label="Navigasi detail foto">
+          <button type="button" aria-label="Detail sebelumnya" disabled={detailIndex <= 0} onClick={() => choose(detailFiles[detailIndex - 1])}><ChevronLeft size={20} /></button>
+          <span>{String(detailIndex + 1).padStart(2, '0')} / {String(detailFiles.length).padStart(2, '0')}<i aria-hidden="true" /></span>
+          <button type="button" aria-label="Detail berikutnya" disabled={detailIndex >= detailFiles.length - 1} onClick={() => choose(detailFiles[detailIndex + 1])}><ChevronRight size={20} /></button>
+        </div>}
+      </aside>
+    </div>}
     {viewerId && <MediaViewer files={visibleFiles.length ? visibleFiles : files} initialIndex={viewerIndex < 0 ? Math.max(0, files.findIndex(file => file.id === viewerId)) : viewerIndex} onClose={() => setViewerId(null)} onFileDeleted={id => { setFiles(current => current.filter(file => file.id !== id)); setViewerId(null); setSelectedId(null); }} />}
   </div>;
 }
