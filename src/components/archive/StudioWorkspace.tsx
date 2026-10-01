@@ -33,7 +33,7 @@ export default function StudioWorkspace({ mode, initialCategory = "documentation
     const params = new URLSearchParams({ year: String(year), quarter: String(quarter), category });
     if (sabbath) params.set("sabbath", sabbath);
     const url = mode === "selection" ? "/api/archive/random?count=12" : "/api/archive/tree?" + params;
-    setLoading(true);
+    
     fetch(url).then(response => response.json()).then(json => {
       if (!json.success) throw new Error();
       setFiles(mode === "selection" ? json.data || [] : json.data.files || []);
