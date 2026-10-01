@@ -49,6 +49,18 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+.studio-masthead{height:76px;display:flex;align-items:center;justify-content:space-between;gap:20px;width:100%;max-width:none;margin:auto;padding:0 clamp(22px,5vw,80px);background:#080909;color:#eee}
+.studio-brand{display:inline-flex;align-items:center;gap:12px;color:#eae7e0;text-decoration:none}
+.studio-brand img{filter:invert(1);object-fit:contain}
+.studio-brand span{font-size:13px;font-weight:600;letter-spacing:.2em;line-height:1.3}
+.studio-brand small{display:block;font:9px var(--font-geist-mono),monospace;letter-spacing:.18em;color:#9a968e;margin-top:3px}
+.studio-masthead-actions{display:flex;align-items:center;gap:clamp(14px,2.5vw,34px)}
+.studio-masthead-link{font:10px var(--font-geist-mono),monospace;letter-spacing:.14em;color:#aaa69e;text-decoration:none;background:none;border:0;padding:8px 0;cursor:pointer;white-space:nowrap}
+.studio-masthead-link:hover{color:#fff}.studio-masthead-link span{margin-left:4px}
+.studio-account{width:29px;height:29px;border:1px solid #77736d;background:#252420;color:#eee;font-size:11px;cursor:pointer;border-radius:50%}
+@media(max-width:700px){.studio-masthead{height:65px;padding:0 24px}.studio-brand img{width:27px;height:27px}.studio-brand span{font-size:11px;letter-spacing:.1em}.studio-brand small{font-size:7px;letter-spacing:.13em}.studio-masthead-actions{gap:13px}.studio-masthead-link{font-size:9px}.studio-admin-link{display:none}}
+.studio-upload{background:#0b0b0b}.studio-upload-kicker{font:10px var(--font-geist-mono),monospace;letter-spacing:.2em;color:#a49f95;margin-bottom:20px}.studio-upload-title{font-weight:400;font-size:clamp(45px,7vw,83px);line-height:1.05;letter-spacing:-.065em}.studio-upload-title em{font-family:Georgia,"Times New Roman",serif;font-weight:400}.studio-upload-intro{max-width:450px;color:#98948e;line-height:1.7;font-size:14px;margin-top:20px}.studio-upload-steps{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;border-top:1px solid #ffffff40;padding:17px 0 62px;color:#8b8780;font:11px var(--font-geist-mono),monospace}.studio-upload-steps span{display:flex;gap:10px}.studio-upload-steps b{font:400 12px var(--font-geist-sans),sans-serif;color:#d6d3ce}.studio-upload-section{border-top:1px solid #ffffff24;padding-top:21px}.studio-upload-section h3{font:400 24px Georgia,"Times New Roman",serif;letter-spacing:-.03em;margin-bottom:7px}.studio-upload-section h3 span{font:10px var(--font-geist-mono),monospace;vertical-align:middle;color:#8f8b84;margin-right:13px}.studio-upload-section p{font-size:12px;color:#89857f;margin-bottom:24px}.studio-upload-options{display:flex;background:#242320;padding:4px}.studio-upload-drop{background:#151513;min-height:220px;display:flex;flex-direction:column;align-items:center;justify-content:center}.studio-upload-waiting{color:#77736d;font-size:13px;background:#151513;padding:30px}.studio-upload .rounded-3xl{border-radius:9px}.studio-upload .rounded-2xl{border-radius:6px}@media(max-width:700px){.studio-upload-steps{gap:6px;padding-bottom:40px}.studio-upload-steps span{display:block;font-size:9px}.studio-upload-steps b{display:block;font-size:10px;margin-top:5px}.studio-upload-title{font-size:50px}.studio-upload-intro{font-size:12px}.studio-upload-drop{padding:30px}}
+
 ::selection {
   background-color: #000000;
   color: #FFFFFF;
@@ -174,3 +186,26 @@ body {
     @apply text-xs font-mono tracking-[0.2em] uppercase text-white mb-6;
   }
 }
+
+.viewer-filmstrip{display:flex;gap:8px;max-width:min(600px,85vw);overflow-x:auto;padding:10px;pointer-events:auto;scrollbar-width:thin;scrollbar-color:#555 transparent}
+.viewer-filmstrip button{width:52px;height:49px;flex:none;border:1px solid #ffffff24;border-radius:4px;overflow:hidden;background:#1b1d1b;color:#ddd;display:grid;place-items:center;opacity:.55;cursor:pointer}
+.viewer-filmstrip button[aria-pressed=true]{opacity:1;border-color:#eee3cc}.viewer-filmstrip img{width:100%;height:100%;object-fit:cover}.viewer-filmstrip button:focus-visible{outline:2px solid white;outline-offset:2px}
+/* Upload presentation only; the existing queue remains mounted across steps. */
+.studio-upload{background:#080909 url("/jesus-prayer.webp") right top/auto 800px no-repeat;background-blend-mode:soft-light;padding:35px 20px 80px;font-family:var(--font-geist-sans),sans-serif}
+.studio-upload>div:first-child{max-width:740px;padding:35px;background:#151716;border:1px solid #ffffff1f;border-radius:12px;box-shadow:0 30px 90px #0009}
+.studio-upload>div:first-child>div:first-child{margin-bottom:32px}
+.studio-upload-title{font-size:36px;letter-spacing:-.035em}.studio-upload-intro{font-size:12px;margin-top:12px}
+.studio-upload-steps{gap:12px;border:0;padding:0 0 35px}
+.studio-upload-steps span{border-top:2px solid #ffffff1d;padding-top:12px;font-size:9px;opacity:.45}
+.studio-upload-steps span[aria-current]{border-color:#e9ddc7;opacity:1}
+.studio-upload-section{border:0;padding-top:0}.studio-upload-section h3{font:400 22px var(--font-geist-sans),sans-serif}.studio-upload-section[hidden]{display:none}
+.studio-upload-options{gap:16px;background:none;padding:0}
+.studio-upload-options button{padding:25px 20px;text-align:left;border:1px solid #ffffff25;border-radius:8px;transition:transform .3s,background .3s}
+.studio-upload-options button:hover{transform:translateY(-3px)}
+.studio-upload-options small{display:block;font-size:11px;line-height:1.6;opacity:.65;margin-top:12px}
+.studio-upload-navigation{display:flex;align-items:center;justify-content:space-between;gap:18px;margin-top:35px;border-top:1px solid #ffffff15;padding-top:25px;font-size:12px}
+.studio-upload-navigation button{border:1px solid #ffffff30;border-radius:24px;padding:12px 20px;cursor:pointer}
+.studio-upload-navigation button:last-child{background:#ece4d6;color:#111}
+.studio-upload-navigation button:disabled{opacity:.3;cursor:not-allowed}
+.studio-upload-navigation span{color:#aaa;font-size:11px}
+@media(max-width:600px){.studio-upload{padding:18px 14px 45px}.studio-upload>div:first-child{padding:25px 18px}.studio-upload-title{font-size:30px}.studio-upload-options{gap:10px}.studio-upload-options button{padding:20px 12px;font-size:12px}.studio-upload-steps span{font-size:8px}.studio-upload-navigation button{padding:11px 16px}}
