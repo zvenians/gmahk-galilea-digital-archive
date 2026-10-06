@@ -1,5 +1,9 @@
 @import "tailwindcss";
 
+.studio-upload-period{display:flex;gap:22px;margin-bottom:22px}
+.studio-upload-period label{display:flex;flex-direction:column;gap:9px;font-size:10px;color:#99998e;min-width:110px}
+.studio-upload-period select{appearance:auto;background:#101210;color:#eee8dc;padding:12px;border:1px solid #ffffff25;font-size:13px}
+
 :root {
   --background: #000000;
   --foreground: #ffffff;

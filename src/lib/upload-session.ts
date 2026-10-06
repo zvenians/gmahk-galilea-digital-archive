@@ -1,4 +1,4 @@
-import { createHmac, timingSafeEqual } from 'crypto';
+import { createHmac, randomUUID, timingSafeEqual } from 'crypto';
 import { ArchiveCategory } from './types';
 
 export interface UploadSessionPayload {
@@ -14,6 +14,7 @@ export interface UploadSessionPayload {
   quarter: number;
   folderId: string;
   folderPath: string;
+  sessionUrl?: string;
   expiresAt: number;
 }
 
@@ -34,6 +35,26 @@ function sign(encodedPayload: string): string {
   return createHmac('sha256', getSigningSecret())
     .update(encodedPayload)
     .digest('base64url');
+}
+
+/** HttpOnly guest identity; not an admin credential or Drive permission. */
+export function createGuestUploadIdentity(): { uid: string; cookie: string } {
+  const uid = `guest-${randomUUID()}`;
+  const payload = Buffer.from(JSON.stringify({ uid, expiresAt: Date.now() + 86400000 })).toString('base64url');
+  return { uid, cookie: `${payload}.${sign(`guest:${payload}`)}` };
+}
+
+export function verifyGuestUploadIdentity(cookie: string | undefined): string | null {
+  if (!cookie || cookie.length > 1000) return null;
+  const [payload, signature, ...extra] = cookie.split('.');
+  if (!payload || !signature || extra.length) return null;
+  try {
+    const expected = Buffer.from(sign(`guest:${payload}`));
+    const supplied = Buffer.from(signature);
+    if (expected.length !== supplied.length || !timingSafeEqual(expected, supplied)) return null;
+    const data = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
+    return typeof data.uid === 'string' && /^guest-[a-f0-9-]{36}$/.test(data.uid) && data.expiresAt > Date.now() ? data.uid : null;
+  } catch { return null; }
 }
 
 export function createUploadSessionToken(

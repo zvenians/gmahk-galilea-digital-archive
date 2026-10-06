@@ -495,6 +495,7 @@ export async function createResumableUploadSession(params: {
   name: string;
   mimeType: string;
   size: number;
+  origin?: string;
 }): Promise<string> {
   const drive = getGoogleDriveClient();
   if (!drive) {
@@ -524,6 +525,7 @@ export async function createResumableUploadSession(params: {
       'Content-Type': 'application/json',
       'X-Upload-Content-Type': params.mimeType,
       'X-Upload-Content-Length': params.size.toString(),
+      ...(params.origin ? { Origin: params.origin } : {}),
     },
     body: JSON.stringify(metadata)
   });

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useRef, Suspense } from 'react';
+import React, { useEffect, useMemo, useState, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -18,6 +18,8 @@ import { useToast } from '@/context/ToastContext';
 import { useAuth } from '@/context/AuthContext';
 import StudioAccount from '@/components/archive/StudioAccount';
 import UploadThumbnail from '@/components/archive/UploadThumbnail';
+import { MAX_UPLOAD_BYTES, transferToDrive, uploadApi, UploadExpiredError, UploadRequestError, waitForRetry, type UploadReply } from '@/lib/resumable-upload';
+import { getDefaultUploadSabbath, getSabbathsInQuarter, isValidSabbathDate, parseSabbathDetails } from '@/lib/sabbath';
 
 interface QueueItem {
   id: string;
@@ -28,6 +30,7 @@ interface QueueItem {
   xhr?: XMLHttpRequest;
   sessionUrl?: string;
   uploadToken?: string;
+  driveFileId?: string;
   safeFileName?: string;
   destination?: Record<string, unknown>;
 }
@@ -39,15 +42,20 @@ function UploadContent() {
   const queryCategory = searchParams.get('category') as ArchiveCategory | null;
 
   const { showToast } = useToast();
-  const { user, role, loading: authLoading, getIdToken } = useAuth();
+  const { getIdToken } = useAuth();
+  const guestSession = useRef<Promise<void> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const stepTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => { if (stepTimer.current) clearTimeout(stepTimer.current); }, []);
 
-  const [category, setCategory] = useState<ArchiveCategory>(queryCategory || 'documentation');
-  const [sabbathList, setSabbathList] = useState<SabbathInfo[]>([]);
+  const [category, setCategory] = useState<ArchiveCategory>(queryCategory === 'worship' ? 'worship' : 'documentation');
+  const [uploadPeriod, setUploadPeriod] = useState(() => {
+    const initial = isValidSabbathDate(querySabbath) ? parseSabbathDetails(querySabbath) : getDefaultUploadSabbath();
+    return { year: initial.year, quarter: initial.quarter };
+  });
+  const sabbathList = useMemo(() => getSabbathsInQuarter(uploadPeriod.year, uploadPeriod.quarter), [uploadPeriod.year, uploadPeriod.quarter]);
   const [defaultSabbath, setDefaultSabbath] = useState<SabbathInfo | null>(null);
-  const [selectedSabbathDate, setSelectedSabbathDate] = useState<string>(querySabbath);
+  const [selectedSabbathDate, setSelectedSabbathDate] = useState<string>(() => isValidSabbathDate(querySabbath) ? querySabbath : getDefaultUploadSabbath().date);
   const [showDatePicker, setShowDatePicker] = useState<boolean>(false);
 
   const [queue, setQueue] = useState<QueueItem[]>([]);
@@ -64,11 +72,10 @@ function UploadContent() {
       .then((json) => {
         if (!isMounted || !json.success) return;
         const defaultSab: SabbathInfo = json.data.defaultUpload || json.data.nextSabbath;
-        const allQuarterSabs: SabbathInfo[] = json.data.quarter?.sabbaths || [];
         setDefaultSabbath(defaultSab);
-        setSabbathList(allQuarterSabs);
-        if (!querySabbath && defaultSab) {
+        if (!isValidSabbathDate(querySabbath) && defaultSab) {
           setSelectedSabbathDate(defaultSab.date);
+          setUploadPeriod({ year: defaultSab.year, quarter: defaultSab.quarter });
         }
       })
       .catch((err) => console.error(err));
@@ -86,12 +93,79 @@ function UploadContent() {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [uploadActive]);
 
-  useEffect(() => {
-    if (uploadActive) {
-      processQueue();
+  const running = useRef(new Map<string, AbortController>());
+  useEffect(() => { const controllers = running.current; return () => { controllers.forEach(controller => controller.abort()); }; }, []);
+
+  const startUpload = async (id: string) => {
+    const item = queue.find(q => q.id === id);
+    if (!item || running.current.has(id)) return;
+    const controller = new AbortController();
+    running.current.set(id, controller);
+    const { signal } = controller;
+    const update = (patch: Partial<QueueItem>) => setQueue(prev => prev.map(q => q.id === id ? { ...q, ...patch } : q));
+    update({ status: 'UPLOADING', error: undefined, xhr: { abort: () => controller.abort() } as XMLHttpRequest });
+    try {
+      const idToken = await getIdToken();
+      if (!idToken) {
+        guestSession.current ??= uploadApi({ action: 'guest' }, null, AbortSignal.timeout(90000))
+          .then(() => {}).catch(error => { guestSession.current = null; throw error; });
+        await guestSession.current;
+      }
+      signal.throwIfAborted();
+      let sessionUrl = item.sessionUrl;
+      let uploadToken = item.uploadToken;
+      let driveFileId = item.driveFileId;
+      // Freeze the destination for retries even if the form is changed later.
+      const uploadCategory = (item.destination?.category as ArchiveCategory) || category;
+      const uploadDate = item.destination?.sabbathDate || selectedSabbathDate;
+      let resume = Boolean(sessionUrl);
+      let restarts = 0;
+      while (!driveFileId) {
+        if (!sessionUrl) {
+          const init = await uploadApi<{ sessionUrl: string; uploadToken: string; safeFileName: string; destination: Record<string, unknown> }>({
+            action: 'init', fileName: item.file.name, mimeType: item.file.type || 'application/octet-stream',
+            fileSize: item.file.size, category: uploadCategory, sabbathDate: uploadDate,
+          }, idToken, signal);
+          sessionUrl = init.sessionUrl;
+          uploadToken = init.uploadToken;
+          update({ ...init, progress: 0 });
+          resume = false;
+        }
+        try {
+          driveFileId = await transferToDrive({ file: item.file, sessionUrl, signal, resume,
+            checkStatus: () => uploadApi<UploadReply>({ action: 'status', uploadToken }, idToken, signal),
+            onProgress: progress => update({ progress, error: undefined }),
+            onRetry: attempt => update({ error: 'Koneksi terputus. Mencoba lagi (' + attempt + '/5)…' }),
+          });
+          // Keep the completed ID: retrying finalize must not re-upload bytes.
+          update({ driveFileId, progress: 99, error: undefined });
+        } catch (error) {
+          if (!(error instanceof UploadExpiredError) || restarts++ >= 1) throw error;
+          sessionUrl = undefined;
+          update({ sessionUrl: undefined, uploadToken: undefined, progress: 0 });
+        }
+      }
+      for (let attempt = 0; ; attempt++) {
+        try {
+          const confirmation = await uploadApi<{ data?: { id?: string; size?: number } }>({ action: 'finalize', fileId: driveFileId, uploadToken }, idToken, signal);
+          if (confirmation.data?.id !== driveFileId || confirmation.data?.size !== item.file.size) {
+            throw new UploadRequestError('Konfirmasi Google Drive belum lengkap. Tekan Coba lagi untuk memeriksa file.', true);
+          }
+          break;
+        } catch (error) {
+          if (!(error instanceof UploadRequestError) || !error.retryable || attempt >= 2) throw error;
+          update({ error: 'File sudah terkirim. Menunggu konfirmasi…' });
+          await waitForRetry(1000 * 2 ** attempt, signal);
+        }
+      }
+      signal.throwIfAborted();
+      update({ status: 'SUCCESS', progress: 100, error: undefined });
+    } catch (error) {
+      update({ status: 'ERROR', error: signal.aborted ? 'Upload dibatalkan.' : (error as Error).message || 'Upload belum berhasil. Coba lagi.' });
+    } finally {
+      running.current.delete(id);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [queue, uploadActive]);
+  };
 
   const processQueue = async () => {
     const activeUploads = queue.filter(q => q.status === 'UPLOADING').length;
@@ -105,13 +179,13 @@ function UploadContent() {
         if (failed === 0) {
           showToast({
             type: 'success',
-            message: 'Unggahan Selesai',
-            description: `${queue.length} berkas berhasil diunggah.`,
+            message: 'Tersimpan di Google Drive',
+            description: `${queue.length} file berhasil diunggah.`,
           });
         } else {
           showToast({
             type: 'warning',
-            message: 'Unggahan Selesai Sebagian',
+            message: 'Sebagian file belum terunggah',
             description: `${queue.length - failed} berhasil, ${failed} gagal.`,
           });
         }
@@ -128,273 +202,13 @@ function UploadContent() {
     });
   };
 
-  const startUpload = async (id: string) => {
-    const item = queue.find(q => q.id === id);
-    if (!item) return;
-
-    setQueue(prev => prev.map(q => q.id === id ? { ...q, status: 'UPLOADING', progress: 0 } : q));
-
-    try {
-      const idToken = await getIdToken();
-      if (!idToken || role !== 'admin') {
-        throw new Error('Sesi admin tidak tersedia. Silakan masuk kembali.');
-      }
-      
-      let sessionUrl = item.sessionUrl;
-      let uploadToken = item.uploadToken;
-      let safeFileName = item.safeFileName;
-      let destination = item.destination;
-
-      const initSession = async () => {
-          const initRes = await fetch('/api/upload', {
-              method: 'POST',
-              headers: {
-                  'Content-Type': 'application/json',
-                  ...(idToken ? { 'Authorization': `Bearer ${idToken}` } : {})
-              },
-              body: JSON.stringify({
-                  action: 'init',
-                  fileName: item.file.name,
-                  mimeType: item.file.type || 'application/octet-stream',
-                  fileSize: item.file.size,
-                  category,
-                  sabbathDate: destination?.sabbathDate || selectedSabbathDate
-              })
-          });
-          const initData = await initRes.json();
-          if (!initData.success) throw new Error(initData.error || 'Gagal inisialisasi upload');
-          sessionUrl = initData.sessionUrl;
-          uploadToken = initData.uploadToken;
-          safeFileName = initData.safeFileName;
-          destination = initData.destination;
-          setQueue(prev => prev.map(q => q.id === id ? { ...q, sessionUrl, uploadToken, safeFileName, destination } : q));
-      };
-
-      if (!sessionUrl) {
-          await initSession();
-      }
-
-      if (!sessionUrl) {
-          throw new Error('Sesi upload tidak dapat dibuat');
-      }
-
-      const CHUNK_SIZE = 8 * 1024 * 1024; // 8 MB; kelipatan 256 KiB sesuai protokol resumable Drive
-      const totalSize = item.file.size;
-      let start = 0;
-      let driveFileId = null;
-
-      const diagLog = (event: string, details: Record<string, unknown> = {}) => {
-          const safeDetails = { ...details };
-          if (safeDetails.sessionUrl) safeDetails.sessionUrl = '***';
-          console.log(`[UploadDiag Client ${new Date().toISOString()}] ${event}:`, JSON.stringify(safeDetails));
-      };
-
-      // Check session status to see where to resume (or if it's expired)
-      try {
-          diagLog('CHECK_SESSION_START', { totalSize });
-          const checkRes = await fetch(sessionUrl, {
-              method: 'PUT',
-              headers: { 'Content-Range': `bytes */${totalSize}` }
-          });
-          diagLog('CHECK_SESSION_RESULT', { status: checkRes.status, range: checkRes.headers.get('Range') });
-          
-          if (checkRes.status === 308) {
-              const range = checkRes.headers.get('Range');
-              if (range) {
-                  const parts = range.split('-');
-                  start = parseInt(parts[1], 10) + 1;
-              } else {
-                  start = 0;
-              }
-          } else if (checkRes.status === 200 || checkRes.status === 201) {
-              const data = await checkRes.json();
-              driveFileId = data.id;
-              start = totalSize;
-          } else if (checkRes.status === 404) {
-              diagLog('SESSION_404', { detail: 'Session expired before start' });
-              await initSession();
-              start = 0;
-          }
-      } catch (err) {
-          diagLog('CHECK_SESSION_ERROR', { error: (err as Error).message });
-      }
-
-      let currentXhr: XMLHttpRequest | null = null;
-      let isAborted = false;
-      const abortHandler = () => {
-          isAborted = true;
-          if (currentXhr) currentXhr.abort();
-      };
-      
-      setQueue(prev => prev.map(q => q.id === id ? { ...q, xhr: { abort: abortHandler } as unknown as XMLHttpRequest } : q));
-
-      let retries = 0;
-      const MAX_RETRIES = 7;
-
-      while (start < totalSize && !isAborted) {
-          const end = Math.min(start + CHUNK_SIZE, totalSize);
-          const chunk = item.file.slice(start, end);
-          
-          diagLog('CHUNK_START', { start, end, totalSize, chunkSize: end - start, retries });
-          const chunkStartTime = Date.now();
-          
-          try {
-              const result = await new Promise<{status: number, range?: string | null, responseText?: string, id?: string}>((resolve, reject) => {
-                  currentXhr = new XMLHttpRequest();
-                  currentXhr.open('PUT', sessionUrl as string);
-                  currentXhr.setRequestHeader('Content-Range', `bytes ${start}-${end - 1}/${totalSize}`);
-                  
-                  currentXhr.upload.addEventListener('progress', (event) => {
-                      if (event.lengthComputable) {
-                          const loaded = start + event.loaded;
-                          const percentComplete = Math.round((loaded / totalSize) * 100);
-                          setQueue(prev => prev.map(q => q.id === id ? { ...q, progress: percentComplete } : q));
-                      }
-                  });
-                  
-                  currentXhr.addEventListener('load', () => {
-                      resolve({
-                          status: currentXhr!.status,
-                          range: currentXhr!.getResponseHeader('Range'),
-                          responseText: currentXhr!.responseText
-                      });
-                  });
-                  
-                  currentXhr.addEventListener('error', () => reject(new Error('NETWORK_ERROR')));
-                  currentXhr.addEventListener('abort', () => reject(new Error('ABORTED')));
-                  currentXhr.addEventListener('timeout', () => reject(new Error('TIMEOUT')));
-                  currentXhr.timeout = 600000; // 10 minutes timeout per chunk
-                  
-                  currentXhr.send(chunk);
-              });
-
-              const elapsedMs = Date.now() - chunkStartTime;
-              diagLog('CHUNK_END', { status: result.status, range: result.range, elapsedMs });
-
-              if (result.status === 308) {
-                  if (result.range) {
-                      const parts = result.range.split('-');
-                      start = parseInt(parts[1], 10) + 1;
-                  } else {
-                      diagLog('CHUNK_308_NO_RANGE', { start });
-                      throw new Error('RETRY_HTTP_308_NO_RANGE'); // Force check query in catch block
-                  }
-                  retries = 0;
-              } else if (result.status === 200 || result.status === 201) {
-                  let data;
-                  try { data = JSON.parse(result.responseText || '{}'); } catch {}
-                  driveFileId = data?.id;
-                  start = totalSize;
-                  retries = 0;
-              } else if (result.status === 404) {
-                  diagLog('SESSION_404', { detail: 'Session expired during chunk' });
-                  await initSession();
-                  start = 0;
-                  retries = 0;
-              } else if ([408, 429, 500, 502, 503, 504].includes(result.status)) {
-                  diagLog('CHUNK_HTTP_RETRYABLE', { status: result.status });
-                  throw new Error(`RETRY_HTTP_${result.status}`);
-              } else {
-                  diagLog('CHUNK_HTTP_FATAL', { status: result.status, responseText: result.responseText });
-                  throw new Error(`HTTP_${result.status}: ${result.responseText || ''}`);
-              }
-
-          } catch (err: unknown) {
-              const errMsg = (err as Error).message;
-              const elapsedMs = Date.now() - chunkStartTime;
-              diagLog('CHUNK_EXCEPTION', { error: errMsg, elapsedMs, retries });
-              
-              if (errMsg === 'ABORTED' || isAborted) {
-                  throw new Error('Dibatalkan pengguna');
-              }
-              if (errMsg.startsWith('HTTP_') && !errMsg.startsWith('RETRY_HTTP_')) {
-                  throw new Error(`Gagal upload chunk: ${errMsg}`);
-              }
-              
-              retries++;
-              if (retries > MAX_RETRIES) {
-                  throw new Error(`Gagal setelah ${MAX_RETRIES} percobaan: ${errMsg}`);
-              }
-              
-              const backoff = Math.min(1000 * Math.pow(2, retries), 30000);
-              diagLog('CHUNK_BACKOFF', { backoff, retries });
-              await new Promise(r => setTimeout(r, backoff));
-              
-              if (isAborted) throw new Error('Dibatalkan pengguna');
-              
-              // Verify server's actual state before retrying
-              try {
-                  diagLog('CHECK_SESSION_START_RETRY', { totalSize });
-                  const checkXhr = new XMLHttpRequest();
-                  const checkResult = await new Promise<{status: number, range?: string | null, responseText?: string}>((resolve, reject) => {
-                      checkXhr.open('PUT', sessionUrl as string);
-                      checkXhr.setRequestHeader('Content-Range', `bytes */${totalSize}`);
-                      checkXhr.onload = () => resolve({
-                          status: checkXhr.status,
-                          range: checkXhr.getResponseHeader('Range'),
-                          responseText: checkXhr.responseText
-                      });
-                      checkXhr.onerror = () => reject(new Error('NETWORK_ERROR'));
-                      checkXhr.onabort = () => reject(new Error('ABORTED'));
-                      checkXhr.send();
-                  });
-                  
-                  diagLog('CHECK_SESSION_RESULT_RETRY', { status: checkResult.status, range: checkResult.range });
-                  if (checkResult.status === 308) {
-                      if (checkResult.range) {
-                          const parts = checkResult.range.split('-');
-                          start = parseInt(parts[1], 10) + 1;
-                      } else {
-                          start = 0;
-                      }
-                  } else if (checkResult.status === 200 || checkResult.status === 201) {
-                      const data = JSON.parse(checkResult.responseText || '{}');
-                      driveFileId = data.id;
-                      start = totalSize;
-                  } else if (checkResult.status === 404) {
-                      diagLog('SESSION_404_RETRY', { detail: 'Session expired detected on retry check' });
-                      await initSession();
-                      start = 0;
-                  }
-              } catch (checkErr) {
-                  diagLog('CHECK_SESSION_ERROR_RETRY', { error: (checkErr as Error).message });
-              }
-          }
-      }
-      
-      if (isAborted) {
-          throw new Error('Dibatalkan pengguna');
-      }
-
-      if (!driveFileId) {
-          throw new Error('Upload selesai tetapi tidak mendapatkan ID file dari Google Drive');
-      }
-
-      // Step 3: FINALIZE
-      const finalizeRes = await fetch('/api/upload', {
-          method: 'POST',
-          headers: {
-              'Content-Type': 'application/json',
-              ...(idToken ? { 'Authorization': `Bearer ${idToken}` } : {})
-          },
-          body: JSON.stringify({
-              action: 'finalize',
-              fileId: driveFileId,
-              uploadToken,
-          })
-      });
-      
-      const finalizeData = await finalizeRes.json();
-      if (!finalizeData.success) {
-          throw new Error(finalizeData.error || 'Gagal finalisasi upload');
-      }
-
-      setQueue(prev => prev.map(q => q.id === id ? { ...q, status: 'SUCCESS', progress: 100 } : q));
-
-    } catch (err: unknown) {
-      setQueue(prev => prev.map(q => q.id === id ? { ...q, status: 'ERROR', error: (err as Error).message || 'Kesalahan internal' } : q));
+  useEffect(() => {
+    if (uploadActive) {
+      const timer = window.setTimeout(() => { void processQueue(); }, 0);
+      return () => window.clearTimeout(timer);
     }
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queue, uploadActive]);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
@@ -412,8 +226,11 @@ function UploadContent() {
   };
 
   const addFilesToQueue = (files: File[]) => {
-    const validFiles = files.filter(f => f.size > 0);
+    const validFiles = files.filter(f => f.size > 0 && f.size <= MAX_UPLOAD_BYTES);
     const emptyFiles = files.filter(f => f.size === 0);
+    if (files.some(file => file.size > MAX_UPLOAD_BYTES)) {
+      showToast({ type: 'warning', message: 'File terlalu besar', description: 'Batas Google Drive adalah 5 TB per file. File yang melebihi batas tidak ditambahkan.' });
+    }
     
     if (emptyFiles.length > 0) {
       showToast({
@@ -448,15 +265,6 @@ function UploadContent() {
   };
 
   const handleStartUploads = () => {
-    if (!user || role !== 'admin') {
-      showToast({
-        type: 'error',
-        message: 'Akses Admin Diperlukan',
-        description: 'Masuk sebagai admin sebelum memulai unggahan.',
-      });
-      router.push('/login');
-      return;
-    }
     if (queue.filter(q => q.status === 'WAITING').length === 0) return;
     setUploadActive(true);
   };
@@ -482,10 +290,11 @@ function UploadContent() {
   const errorFiles = queue.filter(q => q.status === 'ERROR').length;
   const waitingFiles = queue.filter(q => q.status === 'WAITING').length;
   const activeFiles = queue.filter(q => q.status === 'UPLOADING').length;
+  const archiveHref = `/archive?category=${category}&sabbath=${encodeURIComponent(selectedSabbathDate)}`;
   
   const overallProgress = totalFiles === 0 ? 0 : Math.round((queue.reduce((acc, curr) => acc + curr.progress, 0)) / totalFiles);
 
-  const [uiStep, setUiStep] = useState(1);
+  const [uiStep, setUiStep] = useState(() => searchParams.get('step') === 'files' && isValidSabbathDate(querySabbath) ? 3 : 1);
   const [stepLeaving, setStepLeaving] = useState(false);
   const moveStep = (next: number) => {
     if (stepLeaving || uploadActive) return;
@@ -496,39 +305,19 @@ function UploadContent() {
   const formatBytes = (bytes: number) => {
     if (bytes === 0) return '0 B';
     const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
   };
-
-  if (authLoading) {
-    return <main className="min-h-screen bg-[#050505] text-white flex items-center justify-center"><p className="editorial-meta">MEMERIKSA SESI...</p></main>;
-  }
-
-  if (!user || role !== 'admin') {
-    return (
-      <main className="min-h-screen bg-[#050505] text-white">
-        <section className="min-h-screen flex items-center justify-center px-6">
-          <div className="max-w-lg text-center p-10">
-            <AlertCircle className="w-10 h-10 mx-auto mb-6 text-white/70" />
-            <p className="editorial-eyebrow">AREA TERBATAS</p>
-            <h1 className="text-3xl font-light mb-4">Unggahan hanya untuk admin.</h1>
-            <p className="text-sm text-white/50 leading-relaxed mb-8">Masuk dengan akun pengurus agar setiap unggahan tercatat dan tersinkron aman dengan Google Drive.</p>
-            <div className="flex justify-center gap-5 items-center"><Link href="/archive" className="editorial-button">Kembali ke arsip</Link><StudioAccount /></div>
-          </div>
-        </section>
-      </main>
-    );
-  }
 
   return (
     <main className="studio-upload min-h-screen text-white">
       <div className="studio-upload-canvas max-w-5xl mx-auto px-6 py-12 sm:py-20">
         <div className="studio-upload-account"><StudioAccount disabled={uploadActive} /></div>
         <div className="studio-upload-heading flex items-start justify-between mb-12 sm:mb-20">
-          <div><p className="studio-upload-kicker">GALILEA / KONTRIBUSI ARSIP</p><h1 className="studio-upload-title">Bagikan <em>ceritanya.</em></h1><p className="studio-upload-intro">Simpan dokumentasi dan berkas pelayanan agar dapat ditemukan kembali oleh jemaat.</p></div>
+          <div><p className="studio-upload-kicker">GALILEA / UNGGAH</p><h1 className="studio-upload-title">Unggah <em>file.</em></h1><p className="studio-upload-intro">Unggah foto, video, atau dokumen tanpa perlu masuk. Pilih kategori dan tanggal Sabatnya dulu.</p></div>
           <Link
-            href="/archive"
+            href={archiveHref}
             onClick={(e) => {
               if (uploadActive) {
                 e.preventDefault();
@@ -542,11 +331,11 @@ function UploadContent() {
           </Link>
         </div>
 
-        <div className="studio-upload-steps" aria-label="Langkah unggah" style={{ '--step-progress': `${(uiStep - 1) / 3 * 100}%` } as React.CSSProperties}>{[['Tujuan', 'Pilih koleksi arsip'], ['Sabat', 'Tentukan tanggal Sabat'], ['File', 'Tambahkan dokumentasi'], ['Review', 'Periksa lalu unggah']].map(([label, description], index) => <span key={label} aria-current={uiStep === index + 1 ? 'step' : undefined} data-complete={uiStep > index + 1}><i aria-hidden="true" /><strong>0{index + 1}</strong><b>{label}</b><small>{description}</small></span>)}</div>
+        <div className="studio-upload-steps" aria-label="Langkah unggah" style={{ '--step-progress': `${(uiStep - 1) / 3 * 100}%` } as React.CSSProperties}>{[['Tujuan', 'Pilih kategori'], ['Sabat', 'Tentukan tanggal Sabat'], ['File', 'Pilih dari perangkat'], ['Periksa', 'Cek lalu unggah']].map(([label, description], index) => <span key={label} aria-current={uiStep === index + 1 ? 'step' : undefined} data-complete={uiStep > index + 1}><i aria-hidden="true" /><strong>0{index + 1}</strong><b>{label}</b><small>{description}</small></span>)}</div>
         <div className={`studio-upload-step-body ${stepLeaving ? 'studio-upload-step-leaving' : ''}`} key={uiStep}>
         <div className="mb-8">
           <div className="studio-upload-section" hidden={uiStep !== 1}>
-            <h3><span>01</span> Tujuan penyimpanan</h3><p>Pilih jenis koleksi untuk berkas ini.</p>
+            <h3><span>01</span> Simpan di mana?</h3><p>Pilih kategori yang sesuai dengan filemu.</p>
             <div className="studio-upload-options">
               <button
                 onClick={() => setCategory('documentation')}
@@ -556,7 +345,7 @@ function UploadContent() {
                 }`}
               >
                 <ImageIcon className="w-6 h-6 mb-5" /> Dokumentasi
-                <small>Foto dan video kebersamaan jemaat.</small>
+                <small>Foto dan video kegiatan jemaat.</small>
               </button>
               <button
                 onClick={() => setCategory('worship')}
@@ -566,20 +355,34 @@ function UploadContent() {
                 }`}
               >
                 <FileText className="w-6 h-6 mb-5" /> Berkas Ibadah
-                <small>Materi, laporan, dan dokumen pelayanan.</small>
+                <small>Materi ibadah, laporan, dan dokumen lainnya.</small>
               </button>
             </div>
           </div>
 
           <div className="studio-upload-section relative" hidden={uiStep !== 2}>
-            <h3><span>02</span> Tanggal Sabat</h3><p>Tempatkan berkas pada Sabat yang tepat.</p>
+            <h3><span>02</span> Tanggal Sabat</h3><p>Pilih tanggal Sabat untuk file ini.</p>
+            <div className="studio-upload-period">
+              <label>Tahun<select aria-label="Tahun unggahan" value={uploadPeriod.year} disabled={uploadActive} onChange={event => {
+                const year = Number(event.target.value);
+                setUploadPeriod(current => ({ ...current, year }));
+                setSelectedSabbathDate(getSabbathsInQuarter(year, uploadPeriod.quarter)[0].date);
+                setShowDatePicker(true);
+              }}>{Array.from(new Set([uploadPeriod.year, ...Array.from({ length: 8 }, (_, index) => (defaultSabbath?.year || getDefaultUploadSabbath().year) + 1 - index)])).sort((a, b) => b - a).map(year => <option key={year} value={year}>{year}</option>)}</select></label>
+              <label>Triwulan<select aria-label="Triwulan unggahan" value={uploadPeriod.quarter} disabled={uploadActive} onChange={event => {
+                const quarter = Number(event.target.value);
+                setUploadPeriod(current => ({ ...current, quarter }));
+                setSelectedSabbathDate(getSabbathsInQuarter(uploadPeriod.year, quarter)[0].date);
+                setShowDatePicker(true);
+              }}>{[1, 2, 3, 4].map(quarter => <option key={quarter} value={quarter}>{['I', 'II', 'III', 'IV'][quarter - 1]}</option>)}</select></label>
+            </div>
             <button
               onClick={() => !uploadActive && setShowDatePicker(!showDatePicker)}
               className="w-full bg-[#22211f] border-b border-white/30 p-4 text-left flex justify-between items-center hover:bg-white/10 transition-colors"
             >
               <div>
                 <div className="text-sm font-medium text-white">
-                  {sabbathList.find(s => s.date === selectedSabbathDate)?.formattedTitle || defaultSabbath?.formattedTitle || 'Sabat Kustom'}
+                  {parseSabbathDetails(selectedSabbathDate)?.formattedTitle || 'Pilih tanggal Sabat'}
                 </div>
                 <div className="text-xs text-white/40 mt-1">{selectedSabbathDate}</div>
               </div>
@@ -602,7 +405,7 @@ function UploadContent() {
                     {sab.isToday ? (
                       <span className="text-[10px] uppercase bg-green-500/20 text-green-400 px-2 py-0.5 rounded-full">Sabat Ini</span>
                     ) : sab.date === defaultSabbath?.date ? (
-                      <span className="text-[10px] uppercase bg-white/10 text-white/60 px-2 py-0.5 rounded-full">Default</span>
+                      <span className="text-[10px] uppercase bg-white/10 text-white/60 px-2 py-0.5 rounded-full">Disarankan</span>
                     ) : null}
                   </button>
                 ))}
@@ -612,7 +415,7 @@ function UploadContent() {
         </div>
 
         <div hidden={uiStep !== 3}>
-        <div className="studio-upload-section mb-5"><h3><span>03</span> Pilih file</h3><p>Seret ke area ini atau pilih dari perangkat.</p></div>
+        <div className="studio-upload-section mb-5"><h3><span>03</span> Pilih file</h3><p>{category === 'documentation' ? 'Dokumentasi' : 'Berkas Ibadah'} · {parseSabbathDetails(selectedSabbathDate).formattedTitle}</p><p>Seret ke area ini atau pilih dari perangkat.</p></div>
         {!uploadActive && <div className="studio-upload-tray-scene" data-filled={totalFiles > 0}>
           <div className="studio-upload-tray-papers" aria-hidden="true">{[0, 1, 2].map(index => <span key={index}>{queue[index] && <UploadThumbnail file={queue[index].file} />}</span>)}</div>
           <div className="studio-upload-tray-rim" aria-hidden="true" />
@@ -633,7 +436,6 @@ function UploadContent() {
             <input
               type="file"
               multiple
-              accept="image/*,video/*,.pdf,.doc,.docx,.odt,.rtf,.txt,.ppt,.pptx,.odp,.key,.xls,.xlsx,.ods,.csv,.tsv,.pages,.numbers"
               ref={fileInputRef}
               onChange={handleFileSelect}
               className="hidden"
@@ -642,15 +444,16 @@ function UploadContent() {
               <UploadIcon className="w-8 h-8 text-white" />
             </div>
             <h3 className="text-lg font-medium text-white mb-2">Seret &amp; lepas file di sini</h3>
-            <p className="text-white/50 text-sm">atau klik untuk memilih dari perangkat</p>
+            <p className="text-white/50 text-sm">atau pilih dari perangkat. Semua format file diterima.</p>
+            <p className="text-white/40 text-xs mt-3">Maksimal 5 TB per file, sesuai sisa ruang dan kuota Google Drive. Biarkan halaman ini terbuka selama upload.</p>
           </div>
         )}</div>}
 
         <p className="text-sm text-white/60 mt-4" role="status">{totalFiles} berkas dipilih</p>
-        {totalFiles > 0 && <div className="studio-upload-drawer" aria-label="Berkas dipilih">{queue.slice(0, 3).map(item => <div key={item.id}><span className="studio-upload-mini"><UploadThumbnail file={item.file} /></span><span>{item.file.name}<small>{formatBytes(item.file.size)} · Siap ditinjau</small></span><CheckCircle2 size={16} /></div>)}</div>}
+        {totalFiles > 0 && <div className="studio-upload-drawer" aria-label="Berkas dipilih">{queue.slice(0, 3).map(item => <div key={item.id}><span className="studio-upload-mini"><UploadThumbnail file={item.file} /></span><span>{item.file.name}<small>{formatBytes(item.file.size)} · Siap diunggah</small></span><CheckCircle2 size={16} /></div>)}</div>}
         </div>
         <div hidden={uiStep !== 4}>
-        <div className="studio-upload-section mb-5"><h3><span>04</span> Review &amp; upload</h3><p>{category === 'documentation' ? 'Dokumentasi' : 'Berkas Ibadah'} · {selectedSabbathDate}. Periksa antrean sebelum mulai mengunggah.</p></div>
+        <div className="studio-upload-section mb-5"><h3><span>04</span> Periksa &amp; unggah</h3><p>{category === 'documentation' ? 'Dokumentasi' : 'Berkas Ibadah'} · {selectedSabbathDate}. Sudah sesuai? Tekan Mulai unggah.</p></div>
         {totalFiles === 0 && <p className="studio-upload-waiting">Berkas yang dipilih akan muncul di sini sebelum diunggah.</p>}
         {totalFiles > 0 && (
           <div className="mt-5">
@@ -752,21 +555,21 @@ function UploadContent() {
       {showCloseConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
           <div className="bg-[#111] border border-white/10 p-8 rounded-3xl max-w-sm w-full mx-4 shadow-2xl text-center">
-            <h3 className="text-xl font-medium mb-2">Unggahan Masih Berlangsung</h3>
-            <p className="text-white/60 text-sm mb-6">Meninggalkan halaman ini akan membatalkan unggahan yang belum selesai.</p>
+            <h3 className="text-xl font-medium mb-2">Upload masih berjalan</h3>
+            <p className="text-white/60 text-sm mb-6">Kalau keluar sekarang, upload yang belum selesai akan dibatalkan.</p>
             <div className="flex flex-col gap-3">
               <button
                 onClick={() => setShowCloseConfirm(false)}
                 className="w-full py-3 rounded-full bg-white text-black font-medium hover:bg-white/80 transition-colors"
               >
-                Tetap di Halaman
+                Lanjutkan upload
               </button>
               <Link
-                href="/archive"
+                href={archiveHref}
                 onClick={handleCancelAll}
                 className="w-full py-3 rounded-full bg-red-500/10 text-red-500 hover:bg-red-500/20 font-medium transition-colors"
               >
-                Batalkan Unggahan
+                Batalkan dan keluar
               </Link>
             </div>
           </div>
