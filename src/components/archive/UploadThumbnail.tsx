@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useRef } from "react";
-import { FileText, Video } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { FileText, Video, Image as ImageIcon } from "lucide-react";
 
 // Local visual preview only. Object URLs never leave the device.
 export default function UploadThumbnail({ file }: { file: File }) {
   const image = useRef<HTMLImageElement>(null);
+  const [failedFile, setFailedFile] = useState<File | null>(null);
   const isPhoto = file.type.startsWith("image/");
   useEffect(() => {
     if (!isPhoto || !image.current) return;
@@ -14,6 +15,7 @@ export default function UploadThumbnail({ file }: { file: File }) {
     return () => URL.revokeObjectURL(url);
   }, [file, isPhoto]);
   if (!isPhoto) return file.type.startsWith("video/") ? <Video size={22} /> : <FileText size={22} />;
+  if (failedFile === file) return <ImageIcon size={22} aria-label="Pratinjau tidak tersedia" />;
   // eslint-disable-next-line @next/next/no-img-element
-  return <img ref={image} alt="" />;
+  return <img ref={image} alt="" onError={() => setFailedFile(file)} />;
 }

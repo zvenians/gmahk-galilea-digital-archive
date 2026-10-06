@@ -1,0 +1,15 @@
+.deck{width:100%;position:relative;--frame-width:clamp(240px,30vw,380px);--frame-height:clamp(310px,37.5vw,475px)}
+.scene{position:relative;width:100%;height:calc(var(--frame-height) + 55px);perspective:1400px;isolation:isolate;touch-action:pan-y;user-select:none;cursor:grab}
+.scene:active{cursor:grabbing}
+.scene:after{content:"";position:absolute;left:15%;right:15%;bottom:2px;height:40px;background:#000b;filter:blur(18px);border-radius:50%;pointer-events:none}
+.card{position:absolute;top:50%;left:50%;width:var(--frame-width);height:var(--frame-height);padding:0;display:block;background:#000;border:1px solid #ffffff22;border-radius:10px;overflow:hidden;transform:translate(-50%,-50%) translateX(var(--card-x)) translateZ(var(--card-z)) rotateY(var(--card-angle)) scale(var(--card-scale));transform-origin:center center;transition:transform 850ms cubic-bezier(.22,.72,.18,1),opacity 750ms ease,border-color 300ms ease;box-shadow:2px 0 0 #30302b,6px 12px 30px #000b;backface-visibility:hidden;cursor:pointer;will-change:transform}
+.card[data-active=true]{border-color:#ffffff48;box-shadow:2px 0 0 #373731,0 28px 60px #000c}
+.card:focus-visible{outline:2px solid #ece4d7;outline-offset:5px}
+.media{position:absolute;inset:0;display:block;background:#000}
+.media img{object-fit:contain!important;transform:none!important;pointer-events:none;background:#000}
+.caption{position:absolute;left:0;right:0;bottom:0;padding:28px 16px 13px;background:linear-gradient(transparent,#000b);font-size:10px;color:#eee8dc;display:flex;align-items:center;justify-content:space-between;opacity:0;transition:opacity .3s}
+.card[data-active=true]:hover .caption,.card:focus-visible .caption{opacity:1}
+.caption>span{color:#b8b2a8;font-size:9px}.play{position:absolute;right:13px;top:13px;color:#fff;filter:drop-shadow(0 2px 5px #000)}
+.controls{position:relative;z-index:20;display:flex;align-items:center;justify-content:center;gap:30px;padding-top:18px}.controls button{display:grid;place-items:center;width:38px;height:38px;border:1px solid #ffffff32;border-radius:50%;background:#050606;color:#eee;transition:background .2s,transform .2s}.controls button:hover{background:#20211f;transform:translateY(-2px)}.controls button:disabled{opacity:.25}.controls>div{text-align:center}.counter{font:10px var(--font-geist-mono),monospace;letter-spacing:.1em;color:#ece5d9}.counter i{font-style:normal;color:#64645e;padding:0 10px}.controls small{display:block;margin-top:7px;color:#787972;font-size:9px}
+@media(max-width:700px){.deck{--frame-width:clamp(195px,58vw,285px);--frame-height:clamp(250px,73vw,358px)}.scene{perspective:1000px;height:calc(var(--frame-height) + 35px)}.card{border-radius:7px;transform:translate(-50%,-50%) translateX(calc(var(--card-x) * .7)) translateZ(var(--card-z)) rotateY(var(--card-angle)) scale(var(--card-scale))}.controls{gap:22px;padding-top:12px}.controls button{width:33px;height:33px}.caption{font-size:8px;padding:24px 10px 10px}.caption>span{font-size:8px}}
+@media(prefers-reduced-motion:reduce){.card{transition:none;transform:translate(-50%,-50%) translateX(var(--card-x)) scale(var(--card-scale))}.controls button{transition:none}}

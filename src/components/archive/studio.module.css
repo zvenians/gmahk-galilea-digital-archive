@@ -191,3 +191,21 @@
  .detailNavigation{position:static;margin-top:15px}.detailNavigation button{width:28px;height:28px}.detailNavigation i{width:55px}
 }
 @media(prefers-reduced-motion:reduce){.galleryRow,.galleryRow:nth-child(even),.tile,.tile:nth-child(even),.detailObject{transform:none!important;animation:none!important}.detailLayer,.detailBody,.detail{animation:none!important}}
+
+/* The home deck owns a separate stage; text never overlaps the media. */
+.galleryUpload{position:relative;display:flex;align-items:center;justify-content:space-between;gap:32px;margin-top:56px;padding:32px 0 12px;border-top:1px solid #ffffff20}
+.galleryUpload h2{font-size:clamp(23px,2.4vw,32px);font-weight:400;margin:12px 0 10px}
+.galleryUpload p:last-child{font-family:var(--font-geist-sans),sans-serif;font-size:13px;color:#b1ada5;line-height:1.6}
+.galleryUploadButton{display:inline-flex;align-items:center;justify-content:center;gap:12px;flex-shrink:0;min-height:48px;padding:15px 22px;background:#eee5d6;color:#171613;font:500 13px var(--font-geist-sans),sans-serif;transition:transform .2s,background .2s;box-shadow:0 8px 24px #0006}
+.galleryUploadButton:hover{transform:translateY(-2px);background:#fff6e8}.galleryUploadButton:focus-visible{outline:2px solid #eee5d6;outline-offset:5px}
+@media(max-width:700px){.galleryUpload{align-items:stretch;flex-direction:column;gap:22px;margin-top:32px;padding-top:26px}.galleryUploadButton{width:100%}}
+@media(prefers-reduced-motion:reduce){.galleryUploadButton{transition:none}.galleryUploadButton:hover{transform:none}}
+.deckHero{height:auto;min-height:0;padding:112px 5vw 85px;display:flex;flex-direction:column;align-items:center;gap:0}
+.deckHero .heroCopy{position:relative;left:auto;top:auto;transform:none;width:100%;max-width:750px;padding:0;text-align:center;pointer-events:auto}
+.deckHero .heroCopy h1{font-size:clamp(50px,6.5vw,86px);margin:0;letter-spacing:.045em}
+.deckHero .intro{margin:16px auto 22px}.deckHero .primaryLink{margin-bottom:25px}
+.deckStage{width:100%;max-width:1080px;position:relative;min-width:0}
+.deckEmpty{height:360px;display:grid;place-items:center;color:#8d8d85;font-size:13px;text-align:center}
+.deckEmpty button{color:#eee;background:none;border:0;text-decoration:underline;padding:12px}
+.deckHero .heroActions{bottom:28px}.deckHero .heroActions a{font-size:11px}
+@media(max-width:700px){.deckHero{padding:100px 20px 83px}.deckHero .heroCopy h1{font-size:clamp(42px,11.5vw,66px)}.deckHero .heroCopy h1 span{font-size:8px}.deckHero .intro{font-size:11px;max-width:290px;margin:15px auto 20px}.deckHero .primaryLink{margin-bottom:24px}.deckStage{width:calc(100% + 40px)}.deckHero .heroActions{left:20px;right:20px;justify-content:center;bottom:25px}.deckEmpty{height:300px}}
