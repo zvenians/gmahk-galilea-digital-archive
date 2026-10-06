@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAdmin } from '@/lib/auth-server';
+import { authenticateRequest } from '@/lib/auth-server';
 import { getDefaultUploadSabbath, isValidSabbathDate } from '@/lib/sabbath';
 import {
   resolveSabbathDestinationFolder,
@@ -12,7 +12,7 @@ import {
 } from '@/lib/drive';
 import { indexFile, logSystemEvent } from '@/lib/firestore';
 import { ArchiveCategory, FileItem } from '@/lib/types';
-import { createUploadSessionToken, verifyUploadSessionToken } from '@/lib/upload-session';
+import { createGuestUploadIdentity, verifyGuestUploadIdentity, createUploadSessionToken, verifyUploadSessionToken } from '@/lib/upload-session';
 
 const MAX_DRIVE_FILE_SIZE = 5 * 1024 * 1024 * 1024 * 1024;
 
@@ -27,21 +27,35 @@ function sanitizeFileName(value: unknown): string {
 
 export async function POST(req: NextRequest) {
   try {
-    const authorization = await requireAdmin(req);
-    if (!authorization.authorized) {
+    // Public upload only. Admin routes retain their independent role guards.
+    // Reject cross-origin writes; a signed HttpOnly guest cookie owns each
+    // anonymous session, while signed-in uploads keep their verified UID.
+    const origin = req.headers.get('origin');
+    // Next's internal URL may use localhost behind a proxy. Compare against
+    // the actual request Host, not the internal server origin.
+    const requestHost = req.headers.get('host') || new URL(req.url).host;
+    let allowedOrigin = !origin;
+    if (origin) {
+      try {
+        const source = new URL(origin);
+        allowedOrigin = ['http:', 'https:'].includes(source.protocol) && source.host === requestHost;
+      } catch { allowedOrigin = false; }
+    }
+    if (req.headers.get('sec-fetch-site') === 'cross-site' || !allowedOrigin) {
+      return NextResponse.json({ success: false, error: 'Asal permintaan unggahan tidak diizinkan.' }, { status: 403 });
+    }
+    const authHeader = req.headers.get('Authorization');
+    const account = authHeader ? await authenticateRequest(req) : null;
+    if (authHeader && !account) {
       return NextResponse.json(
         {
           success: false,
-          error: authorization.status === 'forbidden'
-            ? 'Hanya admin yang dapat mengunggah berkas.'
-            : 'Silakan masuk sebagai admin untuk mengunggah berkas.',
+          error: 'Sesi akun sudah berakhir. Muat ulang halaman dan coba lagi.',
         },
-        { status: authorization.status === 'forbidden' ? 403 : 401 }
+        { status: 401 }
       );
     }
 
-    const session = authorization.session;
-    const authHeader = req.headers.get('Authorization');
     const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7).trim() : undefined;
     
     // We expect a JSON payload
@@ -53,6 +67,23 @@ export async function POST(req: NextRequest) {
     }
 
     const action = body.action;
+
+    const guestUid = verifyGuestUploadIdentity(req.cookies.get('galilea-upload-guest')?.value);
+    if (action === 'guest') {
+      const response = NextResponse.json({ success: true });
+      if (!account && !guestUid) {
+        const guest = createGuestUploadIdentity();
+        response.cookies.set('galilea-upload-guest', guest.cookie, {
+          httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'strict',
+          path: '/api/upload', maxAge: 86400,
+        });
+      }
+      return response;
+    }
+    const session = account || (guestUid ? { uid: guestUid, email: 'Tamu' } : null);
+    if (!session) {
+      return NextResponse.json({ success: false, error: 'Sesi unggahan belum siap. Muat ulang halaman dan coba lagi.' }, { status: 401 });
+    }
 
     const safeLog = (event: string, details: Record<string, unknown>) => {
         console.log(`[UploadDiag Server ${new Date().toISOString()}] ${event}:`, JSON.stringify(details));
@@ -105,7 +136,8 @@ export async function POST(req: NextRequest) {
                 folderId: destination.folderId,
                 name: safeFileName,
                 mimeType: normalizedMimeType,
-                size: fileSize
+                size: fileSize,
+                origin: origin || undefined,
             });
         } catch (uploadErr) {
             const classified = classifyDriveError(uploadErr);
@@ -128,6 +160,7 @@ export async function POST(req: NextRequest) {
             quarter: destination.quarter,
             folderId: destination.folderId,
             folderPath: destination.folderPath,
+            sessionUrl,
         });
 
         safeLog('INIT_SUCCESS', { fileName, safeFileName, fileSize, category, folderId: destination.folderId, uid: session.uid });
@@ -147,6 +180,28 @@ export async function POST(req: NextRequest) {
                 category
             }
         });
+    }
+
+    if (action === 'status') {
+        let uploadSession;
+        try {
+            uploadSession = verifyUploadSessionToken(typeof body.uploadToken === 'string' ? body.uploadToken : '', session.uid);
+        } catch {
+            return NextResponse.json({ success: false, error: 'Sesi upload tidak valid. Mulai ulang upload ini.' }, { status: 400 });
+        }
+        // Only a server-signed Google URL may be contacted. Never accept a
+        // client-supplied URL or follow redirects (SSRF/capability protection).
+        const url = uploadSession.sessionUrl ? new URL(uploadSession.sessionUrl) : null;
+        if (!url || url.protocol !== 'https:' || url.hostname !== 'www.googleapis.com' || url.port || url.username || url.password || url.pathname !== '/upload/drive/v3/files' || url.searchParams.get('uploadType') !== 'resumable') {
+            return NextResponse.json({ success: false, error: 'Sesi upload lama sudah berakhir. Mulai ulang upload ini.' }, { status: 400 });
+        }
+        const response = await fetch(url, {
+            method: 'PUT', redirect: 'manual', signal: AbortSignal.timeout(30000),
+            headers: { 'Content-Length': '0', 'Content-Range': `bytes */${uploadSession.fileSize}` },
+        });
+        const responseBody = await response.text();
+        safeLog('STATUS_CHECK', { status: response.status });
+        return NextResponse.json({ success: true, status: response.status, range: response.headers.get('Range'), body: responseBody }, { headers: { 'Cache-Control': 'no-store' } });
     }
 
     if (action === 'finalize') {
@@ -227,21 +282,23 @@ export async function POST(req: NextRequest) {
             year: uploadSession.year,
             quarter: uploadSession.quarter,
             folderId: uploadSession.folderId,
-            thumbnailUrl: driveFile.thumbnailLink
-              ? driveFile.thumbnailLink.replace(/=s\d+/, '=s1200')
-              : undefined,
-            webViewLink: driveFile.webViewLink || undefined,
-            webContentLink: driveFile.webContentLink || undefined,
+            ...(driveFile.thumbnailLink ? { thumbnailUrl: driveFile.thumbnailLink.replace(/=s\d+/, '=s1200') } : {}),
+            ...(driveFile.webViewLink ? { webViewLink: driveFile.webViewLink } : {}),
+            ...(driveFile.webContentLink ? { webContentLink: driveFile.webContentLink } : {}),
             uploadedBy: session.email,
             uploadedAt: driveFile.createdTime || new Date().toISOString(),
             isRandomEligible: fileType === 'photo' || fileType === 'video',
         };
 
+        let indexPending = false;
         try {
             await indexFile(fileItem, token);
         } catch (indexErr) {
             safeLog('FINALIZE_FAIL_INDEX', { fileId, fileName: uploadSession.fileName, error: (indexErr as Error).message });
-            return NextResponse.json({ success: false, error: 'Gagal mencatat data ke database.' }, { status: 500 });
+            // Archive discovery reads Drive directly. Guests have no Firebase
+            // REST token. For all uploaders, keep a verified Drive upload successful. Report
+            // a pending auxiliary index instead of prompting a duplicate upload.
+            indexPending = true;
         }
 
         try {
@@ -254,7 +311,8 @@ export async function POST(req: NextRequest) {
                     category: uploadSession.category,
                     sabbathDate: uploadSession.sabbathDate,
                     folderPath: uploadSession.folderPath,
-                    fileName: uploadSession.fileName
+                    fileName: uploadSession.fileName,
+                    indexPending,
                 },
             });
         } catch (logErr) {
@@ -269,7 +327,8 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({
             success: true,
             message: `Berkas berhasil diunggah ke Sabat ${uploadSession.sabbathTitle}`,
-            data: fileItem
+            data: fileItem,
+            indexPending,
         });
     }
 
