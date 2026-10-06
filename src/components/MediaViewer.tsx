@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useCallback, useSyncExternalStore } from 'react';
+import React, { useEffect, useState, useCallback, useSyncExternalStore, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { X, ChevronLeft, ChevronRight, ExternalLink, Trash2, FileText, FileSpreadsheet, Presentation, AlertTriangle, Download, Share2, MoreHorizontal } from 'lucide-react';
 import { FileItem } from '@/lib/types';
@@ -38,6 +38,8 @@ export default function MediaViewer({
   const [isDownloading, setIsDownloading] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
+  const [failedMedia, setFailedMedia] = useState<string | null>(null);
+  const viewerRef = useRef<HTMLDivElement>(null);
 
   // Client-side hydration check for safe createPortal to document.body
   const isClient = useSyncExternalStore(
@@ -45,6 +47,15 @@ export default function MediaViewer({
     () => true,
     () => false
   );
+
+  useEffect(() => {
+    if (!isOpen || !isClient) return;
+    const previous = document.activeElement as HTMLElement | null;
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    viewerRef.current?.focus();
+    return () => { document.body.style.overflow = overflow; previous?.focus(); };
+  }, [isOpen, isClient]);
 
   useEffect(() => {
     console.info('[GALILEA MEDIA VIEWER 4E861B] MediaViewer mounted in React Portal');
@@ -107,8 +118,8 @@ export default function MediaViewer({
 
       showToast({
         type: 'success',
-        message: 'Unduhan Selesai',
-        description: `${currentFile.name} berhasil diunduh.`,
+        message: 'Unduhan dimulai',
+        description: 'Progres unduhan bisa dilihat di browser.',
       });
     } catch (error) {
       showToast({
@@ -132,14 +143,14 @@ export default function MediaViewer({
       showToast({
         type: 'error',
         message: 'Gagal Menyalin',
-        description: 'Tidak dapat menyalin link ke clipboard.',
+        description: 'Link belum bisa disalin. Coba lagi.',
       });
     });
   };
 
   const handleShare = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    const shareUrl = window.location.href; 
+    const shareUrl = new URL(`/archive?category=${currentFile.category}&sabbath=${currentFile.sabbathDate}`, window.location.origin).toString();
     
     if (navigator.share) {
       try {
@@ -163,7 +174,7 @@ export default function MediaViewer({
       showToast({
         type: 'warning',
         message: 'Akses Terbatas',
-        description: 'Hanya pengurus yang memiliki wewenang untuk menghapus berkas.',
+        description: 'Hanya admin yang bisa menghapus file.',
       });
       return;
     }
@@ -219,7 +230,7 @@ export default function MediaViewer({
       showToast({
         type: 'error',
         message: 'Koneksi Terputus',
-        description: 'Tidak dapat menghubungi server. Periksa kembali sambungan internet Anda.',
+        description: 'Server belum bisa dihubungi. Periksa koneksi internet, lalu coba lagi.',
       });
     } finally {
       setIsDeleting(false);
@@ -227,6 +238,7 @@ export default function MediaViewer({
   };
 
   const renderContent = () => {
+    if (failedMedia === currentFile.id) return <div className="max-w-sm p-8 text-center text-white"><FileText className="mx-auto mb-5" /><p>File ini belum bisa ditampilkan di browser.</p><p className="mt-3 text-sm text-white/60">Unduh file aslinya atau buka di Google Drive lewat menu lainnya.</p></div>;
     switch (currentFile.fileType) {
       case 'photo':
         return (
@@ -235,6 +247,7 @@ export default function MediaViewer({
             <img
               src={`/api/archive/media?fileId=${encodeURIComponent(currentFile.id)}`}
               alt={currentFile.name}
+              onError={() => setFailedMedia(currentFile.id)}
               className="max-h-full max-w-full object-contain drop-shadow-2xl"
             />
           </div>
@@ -249,6 +262,7 @@ export default function MediaViewer({
               controls
               playsInline
               preload="metadata"
+              onError={() => setFailedMedia(currentFile.id)}
             >
               Browser Anda belum mendukung pemutar video ini.
             </video>
@@ -280,7 +294,7 @@ export default function MediaViewer({
             </div>
             <h3 className="text-xl font-normal text-white mb-2 break-words leading-tight">{currentFile.name}</h3>
             <p className="text-sm text-white/60 mb-8 font-light">
-              Dokumen ini dapat dibuka langsung di Google Drive atau diunduh ke perangkat Anda.
+              Buka file ini di Google Drive atau unduh ke perangkat.
             </p>
           </div>
         );
@@ -292,6 +306,18 @@ export default function MediaViewer({
   // transform, backdrop-filter, or layout context in ArchivePage or layout.
   return createPortal(
     <div
+      ref={viewerRef}
+      tabIndex={-1}
+      role="dialog"
+      aria-modal="true"
+      aria-label={currentFile.name}
+      onKeyDown={event => {
+        if (event.key !== 'Tab') return;
+        const items = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled), a[href], video[controls], iframe'));
+        const first = items[0], last = items[items.length - 1];
+        if (event.shiftKey && (document.activeElement === first || document.activeElement === event.currentTarget)) { event.preventDefault(); last?.focus(); }
+        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+      }}
       className={`fixed inset-0 z-[9999] ${role !== 'admin' ? 'media-canvas' : ''}`}
       data-testid="media-viewer-portal"
     >
@@ -299,8 +325,6 @@ export default function MediaViewer({
       <div
         className="fixed inset-0 z-[9999] bg-[#090909]/98"
         onClick={onClose}
-        aria-modal="true"
-        role="dialog"
       />
 
       {/* TASK 5: CONTENT (z-[10000]) */}
@@ -342,7 +366,7 @@ export default function MediaViewer({
         data-testid="media-action-bar"
       >
         {/* Left spacer / marker */}
-        <div className="max-w-2xl hidden sm:block text-[10px] font-mono tracking-[.2em] text-white/50 pt-3">GALILEA / MEDIA VIEWER
+        <div className="max-w-2xl hidden sm:block text-[10px] font-mono tracking-[.2em] text-white/50 pt-3">GALILEA / ARSIP
           <div className="hidden" data-testid="marker-galilea">[GALILEA MEDIA VIEWER 4E861B]</div>
         </div>
 
@@ -438,7 +462,7 @@ export default function MediaViewer({
             <span className="w-1 h-1 rounded-full bg-white/30"></span>
             <span>{currentFile.category === 'documentation' ? 'Dokumentasi' : 'File Ibadah'}</span>
             <span className="w-1 h-1 rounded-full bg-white/30"></span>
-            <span>{currentFile.fileType}</span>
+            <span>{{ photo: 'Foto', video: 'Video', pdf: 'PDF', presentation: 'Presentasi', spreadsheet: 'Spreadsheet', document: 'Dokumen', other: 'File' }[currentFile.fileType] || 'File'}</span>
             {hasFiles && files && (
               <>
                 <span className="w-1 h-1 rounded-full bg-white/30"></span>
