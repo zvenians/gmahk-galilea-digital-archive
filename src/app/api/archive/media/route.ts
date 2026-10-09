@@ -1,34 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getGoogleDriveClient, isFileInManagedArchive } from '@/lib/drive';
+import { Readable } from 'node:stream';
+import { classifyDriveError, getGoogleDriveClient, isFileInManagedArchive } from '@/lib/drive';
 
 export const dynamic = 'force-dynamic';
-
-function toWebStream(nodeStream: NodeJS.ReadableStream): ReadableStream {
-  return new ReadableStream({
-    start(controller) {
-      nodeStream.on('data', (chunk: Buffer) => controller.enqueue(chunk));
-      nodeStream.on('end', () => controller.close());
-      nodeStream.on('error', (error: Error) => controller.error(error));
-    },
-    cancel() {
-      if ('destroy' in nodeStream && typeof nodeStream.destroy === 'function') {
-        nodeStream.destroy();
-      }
-    },
-  });
-}
+export const runtime = 'nodejs';
 
 export async function GET(req: NextRequest) {
   try {
     const fileId = new URL(req.url).searchParams.get('fileId')?.trim();
     if (!fileId) return new NextResponse('Missing fileId', { status: 400 });
 
+    const drive = getGoogleDriveClient();
+    if (!drive) return new NextResponse('Koneksi Google Drive sedang tidak tersedia.', { status: 503, headers: { 'Cache-Control': 'no-store' } });
+
     if (!(await isFileInManagedArchive(fileId))) {
       return new NextResponse('File not found in managed archive boundary', { status: 403 });
     }
-
-    const drive = getGoogleDriveClient();
-    if (!drive) return new NextResponse('Drive client not authenticated', { status: 500 });
 
     const metadata = await drive.files.get({
       fileId,
@@ -65,12 +52,15 @@ export async function GET(req: NextRequest) {
     if (contentRange) headers.set('Content-Range', contentRange);
     if (contentLength) headers.set('Content-Length', String(contentLength));
 
-    return new NextResponse(toWebStream(response.data as unknown as NodeJS.ReadableStream), {
+    // Native conversion honors backpressure and destroys the upstream on cancel.
+    return new NextResponse(Readable.toWeb(response.data as unknown as Readable) as ReadableStream<Uint8Array>, {
       status: response.status === 206 || contentRange ? 206 : 200,
       headers,
     });
   } catch (error) {
-    console.error('Media proxy error:', error);
-    return new NextResponse('Media sementara tidak dapat dimuat', { status: 502 });
+    const classified = classifyDriveError(error);
+    console.error('Media proxy error:', classified.kind, classified.statusCode);
+    const status = classified.kind === 'AUTH_ERROR' ? 503 : classified.kind === 'NOT_FOUND' ? 404 : classified.statusCode === 416 ? 416 : 502;
+    return new NextResponse(status === 503 ? 'Koneksi Google Drive sedang tidak tersedia.' : 'Media sementara tidak dapat dimuat', { status, headers: { 'Cache-Control': 'no-store' } });
   }
 }

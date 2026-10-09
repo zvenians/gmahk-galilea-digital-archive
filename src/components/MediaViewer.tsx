@@ -4,10 +4,18 @@ import React, { useEffect, useState, useCallback, useSyncExternalStore, useRef }
 import { createPortal } from 'react-dom';
 import { X, ChevronLeft, ChevronRight, ExternalLink, Trash2, FileText, FileSpreadsheet, Presentation, AlertTriangle, Download, Share2, MoreHorizontal } from 'lucide-react';
 import { FileItem } from '@/lib/types';
+import { getArchiveThumbnailUrl } from '@/lib/archive-media';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 
 const emptySubscribe = () => () => {};
+
+function FilmstripThumbnail({ file }: { file: FileItem }) {
+  const [failed, setFailed] = useState(false);
+  if (failed || !['photo', 'video', 'pdf'].includes(file.fileType)) return <FileText size={20} />;
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img src={getArchiveThumbnailUrl(file.id)} alt="" loading="lazy" onError={() => setFailed(true)} />;
+}
 
 interface MediaViewerProps {
   file?: FileItem;
@@ -39,6 +47,7 @@ export default function MediaViewer({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const [failedMedia, setFailedMedia] = useState<string | null>(null);
+  const [fallbackPhoto, setFallbackPhoto] = useState<string | null>(null);
   const viewerRef = useRef<HTMLDivElement>(null);
 
   // Client-side hydration check for safe createPortal to document.body
@@ -245,9 +254,10 @@ export default function MediaViewer({
           <div className="relative w-full h-[60svh] flex items-center justify-center p-4">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={`/api/archive/media?fileId=${encodeURIComponent(currentFile.id)}`}
+              key={currentFile.id}
+              src={fallbackPhoto === currentFile.id ? getArchiveThumbnailUrl(currentFile.id) : `/api/archive/media?fileId=${encodeURIComponent(currentFile.id)}`}
               alt={currentFile.name}
-              onError={() => setFailedMedia(currentFile.id)}
+              onError={() => fallbackPhoto === currentFile.id ? setFailedMedia(currentFile.id) : setFallbackPhoto(currentFile.id)}
               className="max-h-full max-w-full object-contain drop-shadow-2xl"
             />
           </div>
@@ -446,10 +456,7 @@ export default function MediaViewer({
       <div className="fixed bottom-0 left-0 right-0 z-[10000] px-4 sm:px-8 pb-5 flex flex-col items-center justify-center pointer-events-none">
         {hasFiles && files && !file && <div className="viewer-filmstrip" aria-label="Pilih media">
           {files.map((item, index) => <button key={item.id} type="button" aria-label={`Buka ${item.name}`} aria-pressed={internalIndex === index} onClick={() => setInternalIndex(index)}>
-            {item.thumbnailUrl || item.fileType === 'photo' ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={item.thumbnailUrl || `/api/archive/media?fileId=${encodeURIComponent(item.id)}`} alt="" loading="lazy" />
-            ) : <FileText size={20}/>}
+            <FilmstripThumbnail file={item} />
           </button>)}
         </div>}
         <div

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent } from "react";
 import Image from "next/image";
+import { getArchiveThumbnailUrl } from "@/lib/archive-media";
 import Link from "next/link";
 import { ArrowDownToLine, ArrowLeft, ArrowRight, ChevronLeft, ChevronRight, FileText, Play, Search, Share2, Upload, X } from "lucide-react";
 import type { ArchiveCategory, FileItem, SabbathInfo } from "@/lib/types";
@@ -20,7 +21,7 @@ const sizeLabel = (size: number) => !size ? "Ukuran tidak tersedia" : size < 104
 
 function Thumb({ file, onRatio }: { file: FileItem; onRatio?: (id: string, ratio: number) => void }) {
   const [failed, setFailed] = useState(false);
-  const src = file.thumbnailUrl || (file.fileType === "photo" ? `/api/archive/media?fileId=${encodeURIComponent(file.id)}` : "");
+  const src = getArchiveThumbnailUrl(file.id);
   if (!src || failed) return <span className={styles.placeholder}><FileText size={32} strokeWidth={1} /><small>{kind(file)}</small></span>;
   return <Image src={src} alt={file.name} fill unoptimized sizes="(max-width: 700px) 90vw, 45vw" onError={() => setFailed(true)} onLoad={(event) => {
     const { naturalWidth, naturalHeight } = event.currentTarget;

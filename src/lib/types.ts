@@ -33,7 +33,7 @@ export interface FileItem {
   year: number;
   quarter: number; // 1..4
   folderId: string;
-  thumbnailUrl?: string;
+  thumbnailUrl?: string; // Runtime internal proxy URL; never persisted as a Drive thumbnailLink.
   webViewLink?: string;
   webContentLink?: string;
   uploadedBy?: string;

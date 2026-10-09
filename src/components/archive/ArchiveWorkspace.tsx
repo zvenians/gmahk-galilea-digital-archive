@@ -10,6 +10,7 @@ import {
   type PointerEvent,
 } from "react";
 import Image from "next/image";
+import { getArchiveThumbnailUrl } from "@/lib/archive-media";
 import Link from "next/link";
 import {
   ArrowDownToLine,
@@ -93,10 +94,7 @@ function Thumbnail({
         ? ImageIcon
         : FileText;
   const src =
-    file.thumbnailUrl ||
-    (file.fileType === "photo"
-      ? `/api/archive/media?fileId=${encodeURIComponent(file.id)}`
-      : "");
+    getArchiveThumbnailUrl(file.id);
   return src && !failed ? (
     <Image
       src={src}

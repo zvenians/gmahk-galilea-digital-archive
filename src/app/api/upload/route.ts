@@ -230,7 +230,7 @@ export async function POST(req: NextRequest) {
         try {
             const res = await drive.files.get({
                 fileId,
-                fields: 'id, name, mimeType, parents, webViewLink, webContentLink, thumbnailLink, size, createdTime, trashed'
+                fields: 'id, name, mimeType, parents, webViewLink, webContentLink, size, createdTime, trashed'
             });
             driveFile = res.data;
         } catch (err) {
@@ -282,7 +282,6 @@ export async function POST(req: NextRequest) {
             year: uploadSession.year,
             quarter: uploadSession.quarter,
             folderId: uploadSession.folderId,
-            ...(driveFile.thumbnailLink ? { thumbnailUrl: driveFile.thumbnailLink.replace(/=s\d+/, '=s1200') } : {}),
             ...(driveFile.webViewLink ? { webViewLink: driveFile.webViewLink } : {}),
             ...(driveFile.webContentLink ? { webContentLink: driveFile.webContentLink } : {}),
             uploadedBy: session.email,

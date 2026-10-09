@@ -1,5 +1,6 @@
 import { drive_v3, google } from 'googleapis';
 import { Readable } from 'stream';
+import { getArchiveThumbnailUrl, withArchiveMediaUrls } from './archive-media';
 import { ArchiveCategory, FileFormatType, FileItem, SabbathInfo } from './types';
 import {
   parseSabbathDetails,
@@ -1115,7 +1116,7 @@ export async function discoverArchiveTree(
     try {
       const listedFiles = await listAllDriveFiles({
         q: `'${activeFolderId}' in parents and mimeType != 'application/vnd.google-apps.folder' and trashed = false`,
-        fields: 'files(id, name, mimeType, size, webViewLink, webContentLink, thumbnailLink, createdTime)',
+        fields: 'files(id, name, mimeType, size, webViewLink, webContentLink, createdTime)',
         spaces: 'drive',
         pageSize: 100,
         orderBy: 'name asc',
@@ -1133,7 +1134,7 @@ export async function discoverArchiveTree(
         year: selectedYear,
         quarter: selectedQuarter,
         folderId: activeFolderId!,
-        thumbnailUrl: f.thumbnailLink ? f.thumbnailLink.replace(/=s\d+/, '=s800') : undefined,
+        thumbnailUrl: getArchiveThumbnailUrl(f.id || ''),
         webViewLink: f.webViewLink || undefined,
         webContentLink: f.webContentLink || undefined,
         uploadedAt: f.createdTime || new Date().toISOString(),
@@ -1174,7 +1175,7 @@ export async function discoverArchiveTree(
     }
   }
 
-  const files = Array.from(fileMap.values());
+  const files = Array.from(fileMap.values()).map(withArchiveMediaUrls);
 
   const result: DiscoveredArchiveTreeResult = {
     availableYears,
@@ -1228,7 +1229,7 @@ export async function getRandomFilesFromDrive(count: number = 6): Promise<FileIt
           try {
             const listedFiles = await listAllDriveFiles({
               q: `'${folderId}' in parents and mimeType != 'application/vnd.google-apps.folder' and trashed = false`,
-              fields: 'files(id, name, mimeType, size, webViewLink, webContentLink, thumbnailLink, createdTime)',
+              fields: 'files(id, name, mimeType, size, webViewLink, webContentLink, createdTime)',
               spaces: 'drive',
               pageSize: 1000,
             });
@@ -1245,7 +1246,7 @@ export async function getRandomFilesFromDrive(count: number = 6): Promise<FileIt
               year: sab.year,
               quarter: sab.quarter,
               folderId,
-              thumbnailUrl: f.thumbnailLink ? f.thumbnailLink.replace(/=s\d+/, '=s800') : undefined,
+              thumbnailUrl: getArchiveThumbnailUrl(f.id || ''),
               webViewLink: f.webViewLink || undefined,
               webContentLink: f.webContentLink || undefined,
               uploadedAt: f.createdTime || new Date().toISOString(),
@@ -1282,8 +1283,11 @@ export async function getRandomFilesFromDrive(count: number = 6): Promise<FileIt
  * Global Managed-Folder Validator
  * Ensures a file belongs to either GMAHK Galilea/Dokumentasi or GMAHK Galilea/File Ibadah.
  */
-export async function isFileInManagedArchive(fileId: string): Promise<boolean> {
-  const drive = getGoogleDriveClient();
+export async function isFileInManagedArchive(
+  fileId: string,
+  driveClient: drive_v3.Drive | null = getGoogleDriveClient()
+): Promise<boolean> {
+  const drive = driveClient;
   if (!drive) return false;
 
   const validRoots = [
@@ -1328,7 +1332,10 @@ export async function isFileInManagedArchive(fileId: string): Promise<boolean> {
     
     return false;
   } catch (err) {
-    console.error('Error validating managed archive boundary for', fileId, err);
-    return false;
+    // API/auth failures do not mean the file is outside the archive. Callers
+    // must avoid treating an unavailable Drive connection as a missing file.
+    const classified = classifyDriveError(err);
+    if (classified.kind === 'NOT_FOUND') return false;
+    throw classified;
   }
 }

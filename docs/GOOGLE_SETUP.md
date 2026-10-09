@@ -3,6 +3,47 @@
 
 Dokumen panduan integrasi ekosistem Google untuk GMAHK Galilea Digital Archive.
 
+### Koneksi utama production: User OAuth
+
+Untuk penyimpanan My Drive, backend menggunakan `GOOGLE_CLIENT_ID`,
+`GOOGLE_CLIENT_SECRET`, dan `GOOGLE_DRIVE_REFRESH_TOKEN`. Konfigurasi service
+account di bawah hanya merupakan fallback eksplisit, bukan pengganti token
+OAuth yang kedaluwarsa.
+
+Jika API mengembalikan `503` / `DRIVE_AUTH_ERROR`:
+
+1. Buka Google Auth Platform → Audience pada project pemilik OAuth client.
+   Jika aplikasi External masih berstatus Testing, ubah ke In production.
+2. Otorisasi ulang akun pemilik arsip menggunakan OAuth client yang sama
+   (`npm run drive:connect`), lalu perbarui `GOOGLE_DRIVE_REFRESH_TOKEN` langsung
+   di Environment Variables proyek Vercel yang melayani `drive-galilea.vercel.app`.
+   Pilih environment Production; jangan kirim token lewat chat atau commit.
+3. Redeploy setelah variabel berubah. Periksa `/api/archive/tree` dan
+   `/api/archive/random`, lalu buka foto, putar dan seek video, buka PDF, serta
+   coba unduh file asli.
+
+Status Testing untuk aplikasi External yang meminta scope Drive menghasilkan
+refresh token dengan masa berlaku 7 hari. Production menghilangkan batas khusus
+Testing tersebut; token masih dapat dicabut atau tidak berlaku karena kondisi
+lain. Lihat [ketentuan OAuth Google](https://developers.google.com/identity/protocols/oauth2#expiration).
+
+### URL media dan thumbnail
+
+Browser menggunakan `/api/archive/media?fileId=...` untuk foto asli, video
+(termasuk Range request), dan PDF. Galeri dan filmstrip menggunakan
+`/api/archive/thumbnail?fileId=...`. Endpoint thumbnail memvalidasi batas arsip,
+mengambil `thumbnailLink` terbaru dari Drive, dan mengambil gambar dengan
+autentikasi server. Link tersebut tidak dikirim ke browser atau disimpan di
+Firestore. Data indeks lama dinormalisasi saat dibaca, sehingga tidak perlu
+menghapus atau mengunggah ulang arsip.
+
+Respons gambar berhasil dapat dicache selama 5 menit, dengan revalidasi sampai
+1 jam. Respons gagal memakai `no-store`. Jika thumbnail foto belum tersedia,
+server mengarahkan ke endpoint media internal; video/dokumen tanpa thumbnail
+menampilkan placeholder. Unduhan tetap menggunakan file asli.
+
+Referensi: [metadata dan thumbnail Google Drive](https://developers.google.com/workspace/drive/api/reference/rest/v3/files).
+
 ---
 
 ### 1. Project Identification

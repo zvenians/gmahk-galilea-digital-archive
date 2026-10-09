@@ -1,3 +1,4 @@
+import { FieldValue } from 'firebase-admin/firestore';
 import { NextRequest, NextResponse } from 'next/server';
 import { getAdminFirestore } from '@/lib/firebase-admin';
 import { determineFileType, getGoogleDriveClient, isFileInManagedArchive } from '@/lib/drive';
@@ -37,7 +38,7 @@ export async function POST(req: NextRequest) {
         if (!drive) throw new Error('Google Drive belum terhubung.');
         const metadata = await drive.files.get({
           fileId,
-          fields: 'id,name,mimeType,size,thumbnailLink,webViewLink,webContentLink,createdTime,trashed',
+          fields: 'id,name,mimeType,size,webViewLink,webContentLink,createdTime,trashed',
         });
         if (metadata.data.trashed) {
           await doc.ref.update({ isRandomEligible: false });
@@ -51,7 +52,7 @@ export async function POST(req: NextRequest) {
           mimeType: metadata.data.mimeType || current.mimeType,
           size: Number(metadata.data.size || current.size || 0),
           fileType,
-          thumbnailUrl: metadata.data.thumbnailLink?.replace(/=s\d+/, '=s1200') || null,
+          thumbnailUrl: FieldValue.delete(),
           webViewLink: metadata.data.webViewLink || null,
           webContentLink: metadata.data.webContentLink || null,
           uploadedAt: metadata.data.createdTime || current.uploadedAt,

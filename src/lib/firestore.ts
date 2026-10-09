@@ -1,4 +1,5 @@
 import { getAdminFirestore } from './firebase-admin';
+import { withArchiveMediaUrls } from './archive-media';
 import { ActivityItem, ArchiveCategory, FileItem, SystemLog, AutomationStatus } from './types';
 import { Query, QueryDocumentSnapshot } from 'firebase-admin/firestore';
 import { getDriveAuthInfo, getGoogleDriveClient, classifyDriveError } from './drive';
@@ -7,11 +8,14 @@ import { getDriveAuthInfo, getGoogleDriveClient, classifyDriveError } from './dr
  * Indexes a new file in Firestore
  */
 export async function indexFile(file: FileItem, userToken?: string): Promise<void> {
+  // Store durable metadata only; legacy URLs are normalized on reads.
+  const metadata = { ...file };
+  delete metadata.thumbnailUrl;
   const db = getAdminFirestore();
   let adminError: unknown;
   if (db) {
     try {
-      await db.collection('fileIndex').doc(file.id).set(file);
+      await db.collection('fileIndex').doc(file.id).set(metadata);
       return;
     } catch (err) {
       adminError = err;
@@ -29,7 +33,7 @@ export async function indexFile(file: FileItem, userToken?: string): Promise<voi
     try {
       const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/fileIndex/${encodeURIComponent(file.id)}`;
       const fields: Record<string, unknown> = {};
-      for (const [k, v] of Object.entries(file)) {
+      for (const [k, v] of Object.entries(metadata)) {
         if (typeof v === 'string') fields[k] = { stringValue: v };
         else if (typeof v === 'number') fields[k] = { integerValue: String(v) };
         else if (typeof v === 'boolean') fields[k] = { booleanValue: v };
@@ -77,7 +81,7 @@ export async function getFilesBySabbath(
       }
       const snap = await query.get();
       if (!snap.empty) {
-        return snap.docs.map((d: QueryDocumentSnapshot) => d.data() as FileItem);
+        return snap.docs.map((d: QueryDocumentSnapshot) => withArchiveMediaUrls(d.data() as FileItem));
       }
     }
   } catch (err) {
@@ -125,7 +129,6 @@ export async function getFilesBySabbath(
               year: parseInt(f.year?.integerValue || sabbathDate.slice(0, 4) || String(new Date().getFullYear()), 10),
               quarter: parseInt(f.quarter?.integerValue || '3', 10),
               folderId: f.folderId?.stringValue || '',
-              thumbnailUrl: f.thumbnailUrl?.stringValue,
               webViewLink: f.webViewLink?.stringValue,
               webContentLink: f.webContentLink?.stringValue,
               uploadedBy: f.uploadedBy?.stringValue,
@@ -135,9 +138,9 @@ export async function getFilesBySabbath(
           }
         }
         if (category) {
-          return items.filter((i) => i.category === category);
+          return items.filter((i) => i.category === category).map(withArchiveMediaUrls);
         }
-        return items;
+        return items.map(withArchiveMediaUrls);
       }
     }
   } catch (e) {
@@ -159,7 +162,7 @@ export async function getRandomArchiveSample(limitCount: number = 6): Promise<Fi
         .where('isRandomEligible', '==', true)
         .limit(limitCount * 2)
         .get();
-      const all = snap.docs.map((d: QueryDocumentSnapshot) => d.data() as FileItem);
+      const all = snap.docs.map((d: QueryDocumentSnapshot) => withArchiveMediaUrls(d.data() as FileItem));
       const eligible = all.filter((item) =>
         item.category === 'documentation' &&
         (item.fileType === 'photo' || item.fileType === 'video')
@@ -198,7 +201,6 @@ export async function getRandomArchiveSample(limitCount: number = 6): Promise<Fi
               year: parseInt(f.year?.integerValue || (f.sabbathDate?.stringValue || '').slice(0, 4) || String(new Date().getFullYear()), 10),
               quarter: parseInt(f.quarter?.integerValue || '3', 10),
               folderId: f.folderId?.stringValue || '',
-              thumbnailUrl: f.thumbnailUrl?.stringValue,
               webViewLink: f.webViewLink?.stringValue,
               webContentLink: f.webContentLink?.stringValue,
               uploadedBy: f.uploadedBy?.stringValue,
@@ -213,7 +215,7 @@ export async function getRandomArchiveSample(limitCount: number = 6): Promise<Fi
           (item.fileType === 'photo' || item.fileType === 'video')
         );
         if (eligibleItems.length > 0) {
-          return eligibleItems.sort(() => 0.5 - Math.random()).slice(0, limitCount);
+          return eligibleItems.sort(() => 0.5 - Math.random()).slice(0, limitCount).map(withArchiveMediaUrls);
         }
       }
     }
