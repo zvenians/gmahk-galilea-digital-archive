@@ -15,7 +15,7 @@ import {
 
 export default function Navbar() {
   const pathname = usePathname();
-  const isViewer = pathname === '/' || pathname === '/archive';
+  const isViewer = pathname === '/' || pathname === '/archive' || pathname === '/privacy' || pathname === '/terms';
   const { user, role, loading, roleLoading, isSigningIn, signInWithGoogle, signOut } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
