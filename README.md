@@ -1,20 +1,15 @@
 # GMAHK Galilea Digital Archive
 
-> A secure, high-performance digital repository and media management archive built for the GMAHK Galilea congregation.
+> Media and document archive for the GMAHK Galilea congregation.
 
-[![Status](https://img.shields.io/badge/Status-Production-brightgreen?style=flat-square)](#)
 [![CI](https://github.com/zvenians/gmahk-galilea-digital-archive/actions/workflows/ci.yml/badge.svg)](https://github.com/zvenians/gmahk-galilea-digital-archive/actions/workflows/ci.yml)
-[![Live Demo](https://img.shields.io/badge/Live_Demo-drive--galilea.vercel.app-blue?style=flat-square&logo=vercel)](https://drive-galilea.vercel.app)
-[![Framework](https://img.shields.io/badge/Framework-Next.js_16_(App_Router)-black?style=flat-square&logo=nextdotjs)](https://nextjs.org/)
-[![TypeScript](https://img.shields.io/badge/Language-TypeScript_5-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![Cloud Storage](https://img.shields.io/badge/Storage-Google_Drive_API_v3-4285F4?style=flat-square&logo=googledrive&logoColor=white)](https://developers.google.com/drive)
-[![Database](https://img.shields.io/badge/Database-Firebase_Firestore-FFCA28?style=flat-square&logo=firebase&logoColor=black)](https://firebase.google.com/)
+[Open archive](https://drive-galilea.vercel.app)
 
 ---
 
 ## 1. Project Overview
 
-The **GMAHK Galilea Digital Archive** serves as the central visual and liturgical repository for church services. It ensures that weekly worship records, liturgy bulletins, choir audio, and ministry photos are permanently organized, easily accessible to congregation members, and strictly safeguarded against accidental deletion or unauthorized modifications.
+The **GMAHK Galilea Digital Archive** serves as the central visual and liturgical repository for church services. It organizes worship records, bulletins, choir audio, and ministry photos for congregational browsing and authorized administration.
 
 ---
 
@@ -27,11 +22,11 @@ In church administration and media ministries, weekly worship assets (bulletin P
 * **Bandwidth & quota constraints:** Browsing deep cloud folder trees directly through public Drive links triggers heavy API quota consumption and poor mobile performance.
 
 ### The Solution
-**GMAHK Galilea Digital Archive** provides a dedicated, high-performance web custody layer over Google Drive API v3 and Firebase Firestore:
-1. **Strict Folder Boundary Enforcement:** All read, upload, and trash operations are cryptographically and programmatically bounded to designated church parent folders (`Dokumentasi` and `File Ibadah`). Personal or out-of-scope files on the connected Google account cannot be read or traversed.
+**GMAHK Galilea Digital Archive** provides a web interface over Google Drive API v3 and Firebase Firestore:
+1. **Strict Folder Boundary Enforcement:** Drive operations use checks against designated church folder boundaries (`Dokumentasi` and `File Ibadah`). These boundaries require regression testing when storage operations change.
 2. **Dynamic Sabbath-Centric Navigation:** A custom timezone engine calculates weekly Sabbath dates (`Asia/Makassar` / WITA UTC+8), automatically creating and organizing folder structures by Year (`2026`), Quarter (`Triwulan I - IV`), and date (`12 September 2026`).
 3. **Resilient Upload Queue:** Client-side XHR queue with genuine byte-level upload progress (`loaded / total`), concurrency limiting (max 3 concurrent uploads), duplicate name protection, and anti-page-unload guards.
-4. **Serverless In-Memory Caching:** High-efficiency TTL caching layer reduces redundant Google Drive API roundtrips by up to 90%, ensuring lightning-fast folder navigation.
+4. **In-Memory Caching:** TTL caching reduces repeated Drive requests when cached entries remain valid. Actual savings depend on request patterns.
 
 ---
 
@@ -80,7 +75,7 @@ flowchart TD
 ## 4. Key Features
 
 - **Dynamic Archive Tree Discovery:** Automatically reads and parses directory structures in Google Drive by Year (`2026`), Quarter (`Triwulan I - IV`), and Indonesian Sabbath dates (`12 September 2026`).
-- **Sabbath Calculation Engine (WITA / UTC+8):** Automatically determines the active, nearest, and upcoming Sabbath dates in Makassar local time (`Asia/Makassar`), guaranteeing dynamic quarter navigation.
+- **Sabbath Calculation Engine (WITA / UTC+8):** Automatically determines the active, nearest, and upcoming Sabbath dates in Makassar local time (`Asia/Makassar`), supporting date-based quarter navigation.
 - **Universal Multi-File Upload:**
   - Client-side XHR queue with genuine byte-level progress reporting (`loaded / total`).
   - Strict concurrency control (maximum 3 concurrent active uploads).
@@ -89,7 +84,7 @@ flowchart TD
   - Navigation protection (`beforeunload` & confirmation dialog) preventing queue loss during active uploads.
 - **Format-Agnostic File Handling:** Accepts all valid binary formats supported by Google Drive (images, videos, PDFs, office documents, audio, archives, and spreadsheets) with universal download and sharing actions.
 - **Homepage Showcase ("Momen Pelayanan"):** Displays randomized media exclusively sourced from the managed `Dokumentasi` archive without leaking any personal Drive files.
-- **High-Performance In-Memory Caching:** Serverless-optimized TTL memory cache for folder discovery and archive trees, cutting Google Drive API calls by up to 90% and protecting quota limits.
+- **Caching In-Memory Caching:** Serverless-optimized TTL memory cache for folder discovery and archive trees, reducing repeated Drive API calls while cache entries remain valid.
 - **Role-Based Access Control:**
   - **Viewer:** Public/congregation access to explore the archive, view previews, download files, and submit uploads.
   - **Admin:** Authenticated management dashboard with capability to move files to Google Drive trash, review activity logs, trigger metadata reconciliation, and view diagnostics.
@@ -238,7 +233,7 @@ npm run start
 
 ## 11. Deployment
 
-The project is configured for seamless deployment on [Vercel](https://vercel.com):
+The project is configured for deployment on [Vercel](https://vercel.com):
 
 1. Connect the GitHub repository to your Vercel account.
 2. Add all environment variables in **Project Settings -> Environment Variables**.
@@ -251,10 +246,10 @@ The project is configured for seamless deployment on [Vercel](https://vercel.com
 
 ## 12. Security Notes
 
-- **Archive Boundary Enforcement:** All download, upload, and trash operations strictly validate that the target file resides within the managed `GMAHK Galilea` folder tree (`Dokumentasi` or `File Ibadah`). Personal files on the connected Google account are inaccessible.
+- **Archive Boundary Enforcement:** Download, upload, and trash routes contain checks for managed church folders. Verify these checks during permission or storage changes.
 - **Server-Side Authorization:** Admin endpoints (`/api/admin/*`) require cryptographically verified Firebase ID tokens and reject arbitrary client-side role headers.
 - **Token Freshness:** Expired tokens are caught gracefully, preventing upload batches from silently failing without clear user notifications.
-- **Zero Secret Exposure:** Server-side Google OAuth tokens, service accounts, and refresh tokens are strictly kept on the server side and never sent to the browser.
+- **Server-Side Secrets:** Server-side Google OAuth tokens, service accounts, and refresh tokens are intended to remain on the server. Check the deployment configuration and response payloads for unintended exposure.
 
 ---
 
