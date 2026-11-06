@@ -1,33 +1,25 @@
-﻿# Contributing Guidelines
+# Contributing
 
-Thank you for your interest in contributing to the **GMAHK Galilea Digital Archive**.
+## Development expectations
+- Keep changes focused and explain the user-facing effect.
+- Prefer clear names, small functions, and explicit error handling.
+- Maintain keyboard access, readable contrast, responsive layouts, and reduced-motion support.
+- Verify empty, loading, failed, and successful states for changed workflows.
+- Do not invent performance figures or security certifications.
+- Keep secrets and personal data out of commits. Use `.env.example` as a template only.
+- Preserve folder-scope checks, authorization, and permission boundaries for all Drive operations.
 
-## Development Workflow
+## Local checks
+Install dependencies and configure only the credentials required by the work being tested.
 
-1. **Environment Setup:**
-   Copy the environment template:
-   ``bash
-   cp .env.example .env.local
-   ``
-   Fill in the required Firebase and Google Drive variables. (Never commit .env.local to Git).
+```sh
+npm ci
+npm run lint
+npm run test
+npm run build
+```
 
-2. **Automated Verification:**
-   Before pushing changes or submitting a PR, run the local verification suite:
-   ``bash
-   # Run linter:
-   npm run lint
+The build and tests may require environment variables. Report unavailable checks as not run; never claim a pass without execution.
 
-   # Run automated unit tests (30 tests):
-   npm run test
-
-   # Run production build verification:
-   npm run build
-   ``
-
-3. **Commit Standards:**
-   Use [Conventional Commits](https://www.conventionalcommits.org/) (`feat:`, `fix:`, `docs:`, `ci:`, `chore:`).
-
-4. **Pull Requests:**
-   - Target the `main` branch.
-   - Fill out the PR template checklist completely.
-   - GitHub Actions CI (Lint, Test & Build) must pass before merging.
+## Pull requests
+Use a focused branch. Explain changed routes or components, verification evidence, risks, and rollback considerations. Storage, upload, deletion, and authentication changes require additional review before merging.
