@@ -49,11 +49,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const isConfigured = isFirebaseConfigured();
 
   useEffect(() => {
-    console.info('[GALILEA AUTH BUILD]', {
-      version: 'AUTH-DEBUG-2026-09-11-01',
-      commit: 'b593e45b97230e7bc74e824e6aaab1f9c33e345b'
-    });
-    
     if (!auth) return;
 
     let isMounted = true;
@@ -67,7 +62,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         let resolvedRole: UserRole = isSuper ? 'admin' : 'viewer';
 
-        // Check Firestore role if not super admin
+        // cek peran di firestore jika pengguna bukan super admin
         if (!isSuper && db) {
           try {
             const { doc, getDoc } = await import('firebase/firestore');
@@ -105,7 +100,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signInWithGoogle = async () => {
     if (isSigningInRef.current) {
-      console.log('[Auth] Google Sign-In already in progress. Ignoring duplicate click.');
       return;
     }
 
@@ -153,7 +147,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           description: 'Jendela masuk Google ditutup sebelum proses selesai.',
         });
       } else if (code === 'auth/cancelled-popup-request') {
-        // SILENT
+        // pembatalan popup yang tertangani tidak perlu menampilkan pesan
       } else if (code === 'auth/popup-blocked') {
         showToast({
           type: 'warning',
@@ -207,7 +201,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         description: 'Sesi akun Anda telah ditutup.',
       });
     } catch {
-      // ignore
+      // sesi lokal tetap direset jika proses logout firebase gagal
     }
     setUser(null);
     setRole('viewer');
